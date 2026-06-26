@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║   TUNIM — Sistema de Control de Recaudo y Pasajeros              ║
+║   Herramienta de justicia para el transporte colombiano          ║
+║   © 2026 ACCESVIAL — Todos los derechos reservados               ║
+║   Creado por: ACCESVIAL                                          ║
+║   Fecha de creación: 8 de junio de 2026                          ║
+║   ID: TUNIM-ACCESVIAL-20260608-COR-FMBS                          ║
+║   Ley 23 de 1982 — Decisión Andina 351 de 1993                   ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="author" content="ACCESVIAL">
+<meta name="copyright" content="© 2026 ACCESVIAL. Todos los derechos reservados.">
+<meta name="product" content="TUNIM — Sistema de Control de Recaudo y Pasajeros">
+<meta name="created" content="2026-06-08">
+<meta name="identifier" content="TUNIM-ACCESVIAL-20260608-COR-FMBS">
+<title>TUNIM — Control de Recaudo | ACCESVIAL 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- ══ FIREBASE SDK ══ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+  // ══ CONFIGURACIÓN FIREBASE — TUNIM ══
+  const firebaseConfig = {
+    apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+    authDomain: "tunim-9064e.firebaseapp.com",
+    projectId: "tunim-9064e",
+    storageBucket: "tunim-9064e.firebasestorage.app",
+    messagingSenderId: "948598556990",
+    appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const auth = getAuth(app);
+
+  // Exponer globalmente para usar desde el script principal
+  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth, signInAnonymously, onAuthStateChanged };
+  window._fbReady = false;
+
+  // Login anónimo automático
+  signInAnonymously(auth).then(() => {
+    console.log("✅ Firebase Auth OK");
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  }).catch(e => {
+    console.warn("Firebase Auth error:", e);
+    window._fbReady = true; // continuar en modo local si falla
+    window.dispatchEvent(new Event("fbReady"));
+  });
+</script>
+
+<style>
+:root{
+  --bg:#080C10;--surface:#0E1419;--surface2:#151C24;
+  --border:#1E2A35;--border2:#243040;
+  --text:#E8EDF2;--muted:#4A5A6A;--muted2:#6A7A8A;
+  --amarillo:#F5C800;--naranja:#FF6B1A;--verde:#00D68F;
+  --rojo:#FF3D5A;--azul:#4DB8FF;--cyan:#00E5CC;--morado:#A855F7;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden}
+
+/* ── MODAL CONFIGURACIÓN INICIAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:24px;width:100%;max-width:380px}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:3px;color:var(--amarillo);margin-bottom:4px}
+.modal-sub{font-size:0.7rem;color:var(--muted);margin-bottom:20px;letter-spacing:1px}
+.modal-label{font-size:0.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
+.modal-input{width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;outline:none;transition:border-color 0.2s}
+.modal-input:focus{border-color:var(--amarillo)}
+.modal-input[type="date"]{letter-spacing:1px;text-transform:none}
+.modal-btn{width:100%;padding:14px;background:var(--amarillo);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;color:#000;margin-top:4px}
+
+/* ── HEADER ── */
+.app-header{background:linear-gradient(135deg,#0A1420,#0E1C2A);border-bottom:1px solid var(--border);padding:10px 18px 8px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--text);line-height:1}
+.logo span{color:var(--amarillo)}
+.logo sub{font-size:0.5rem;letter-spacing:1.5px;color:var(--muted);font-family:'Inter',sans-serif;display:block;margin-top:1px}
+.header-right{text-align:right}
+.header-time{font-family:'JetBrains Mono',monospace;font-size:1.05rem;font-weight:700;color:var(--amarillo);letter-spacing:2px}
+.header-date{font-size:0.56rem;color:var(--muted);margin-top:1px;letter-spacing:1px;text-transform:uppercase}
+
+/* ── BARRA VEHÍCULO ── */
+.vehiculo-bar{background:#0A1018;border-bottom:1px solid var(--border);padding:5px 18px;display:flex;align-items:center;justify-content:space-between}
+.vbar-placa{font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:700;color:var(--amarillo);letter-spacing:3px;background:rgba(245,200,0,0.08);border:1px solid rgba(245,200,0,0.2);padding:2px 8px;border-radius:6px}
+.vbar-inicio{font-size:0.58rem;color:var(--muted);letter-spacing:1px}
+.vbar-inicio span{color:var(--azul);font-weight:600}
+.vbar-edit{font-size:0.55rem;color:var(--muted2);background:none;border:1px solid var(--border);padding:2px 7px;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif}
+
+/* ── VIAJE ACTUAL ── */
+.viaje-bar{background:var(--surface2);border-bottom:1px solid var(--border);padding:7px 18px;display:flex;align-items:center;justify-content:space-between}
+.viaje-num{font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--amarillo);letter-spacing:2px}
+.viaje-btns{display:flex;gap:6px}
+.btn-viaje{background:var(--surface);border:1px solid var(--border2);color:var(--muted2);font-size:0.62rem;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s}
+.btn-viaje.activo{background:var(--amarillo);color:#000;border-color:var(--amarillo);font-weight:700}
+
+/* ── RESUMEN BAR ── */
+.resumen-bar{display:grid;grid-template-columns:1fr 1fr 1fr;background:var(--surface);border-bottom:1px solid var(--border)}
+.rb-item{padding:10px 6px;text-align:center;border-right:1px solid var(--border)}
+.rb-item:last-child{border-right:none}
+.rb-val{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--amarillo);line-height:1}
+.rb-lbl{font-size:0.52rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+
+/* ── SYNC STATUS ── */
+.sync-pill{display:inline-flex;align-items:center;gap:4px;font-size:0.55rem;padding:2px 8px;border-radius:20px;font-family:'Inter',sans-serif;font-weight:600;letter-spacing:1px}
+.sync-pill.ok{background:rgba(0,214,143,0.1);color:var(--verde);border:1px solid rgba(0,214,143,0.2)}
+.sync-pill.pending{background:rgba(245,200,0,0.08);color:var(--amarillo);border:1px solid rgba(245,200,0,0.2)}
+.sync-pill.offline{background:rgba(74,90,106,0.15);color:var(--muted);border:1px solid var(--border)}
+
+/* ── TABS ── */
+.tabs-nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;z-index:500;padding-bottom:env(safe-area-inset-bottom)}
+.tab-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px 6px;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;transition:color 0.2s}
+.tab-btn .tab-icon{font-size:1.1rem;line-height:1}
+.tab-btn.active{color:var(--amarillo)}
+.tab-page{display:none;padding-bottom:72px}
+.tab-page.active{display:block}
+
+/* ── DESTINOS ── */
+.sec-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.sec-title{font-size:0.58rem;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted)}
+.sec-action{font-size:0.58rem;color:var(--muted);background:none;border:1px solid var(--border2);padding:3px 8px;border-radius:20px;cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:1px;text-transform:uppercase;transition:border-color 0.2s,color 0.2s}
+.sec-action:hover{border-color:var(--rojo);color:var(--rojo)}
+
+.destinos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px 12px}
+.btn-dest{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:16px 12px 14px;cursor:pointer;position:relative;overflow:hidden;text-align:left;transition:border-color 0.2s,transform 0.1s;user-select:none;-webkit-user-select:none}
+.btn-dest:active{transform:scale(0.93)}
+.btn-dest.flash-anim{animation:destFlash 0.28s ease}
+@keyframes destFlash{0%{transform:scale(1)}35%{transform:scale(0.91);border-color:var(--accent)}100%{transform:scale(1)}}
+.btn-dest .flash-layer{position:absolute;inset:0;background:var(--accent);opacity:0;border-radius:12px;pointer-events:none}
+.btn-dest.flash-anim .flash-layer{animation:layerFade 0.28s ease}
+@keyframes layerFade{0%{opacity:0.3}100%{opacity:0}}
+.dest-origen{font-size:0.56rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.dest-nombre{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:1px;color:var(--text);line-height:1.1;margin-bottom:5px}
+.dest-precio{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;letter-spacing:1px;line-height:1}
+.dest-badge{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:0.9rem;opacity:0;transform:scale(0.4);transition:opacity 0.25s,transform 0.25s;background:var(--accent);color:#000}
+.dest-badge.show{opacity:1;transform:scale(1)}
+.btn-dest[data-idx="0"]{--accent:#4DB8FF}.btn-dest[data-idx="0"] .dest-precio{color:#4DB8FF}
+.btn-dest[data-idx="1"]{--accent:#00E5CC}.btn-dest[data-idx="1"] .dest-precio{color:#00E5CC}
+.btn-dest[data-idx="2"]{--accent:#F5C800}.btn-dest[data-idx="2"] .dest-precio{color:#F5C800}
+.btn-dest[data-idx="3"]{--accent:#FF6B1A}.btn-dest[data-idx="3"] .dest-precio{color:#FF6B1A}
+.btn-dest[data-idx="4"]{--accent:#00D68F}.btn-dest[data-idx="4"] .dest-precio{color:#00D68F}
+.btn-dest[data-idx="5"]{--accent:#A855F7}.btn-dest[data-idx="5"] .dest-precio{color:#A855F7}
+.btn-dest[data-idx="6"]{--accent:#FF3D5A}.btn-dest[data-idx="6"] .dest-precio{color:#FF3D5A}
+.btn-dest[data-idx="7"]{--accent:#00E5CC}.btn-dest[data-idx="7"] .dest-precio{color:#00E5CC}
+
+/* ── CONFIRMACIÓN VISUAL GRANDE ── */
+.confirm-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 0.08s}
+.confirm-overlay.show{opacity:1}
+.confirm-box{background:var(--verde);border-radius:24px;padding:28px 36px;text-align:center;transform:scale(0.8);transition:transform 0.08s}
+.confirm-overlay.show .confirm-box{transform:scale(1)}
+.confirm-icon{font-size:3rem;line-height:1;margin-bottom:8px}
+.confirm-ruta{font-size:0.8rem;font-weight:600;color:rgba(0,0,0,0.6);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.confirm-precio{font-family:'Bebas Neue',sans-serif;font-size:3rem;color:#000;line-height:1;letter-spacing:2px}
+.confirm-num{font-size:0.75rem;color:rgba(0,0,0,0.5);margin-top:6px;font-family:'JetBrains Mono',monospace}
+
+/* ── ÚLTIMO REGISTRO ── */
+.ultimo-reg{margin:0 12px 12px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--verde);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-height:50px}
+.ur-icon{font-size:1.1rem}
+.ur-info{flex:1}
+.ur-texto{font-size:0.78rem;font-weight:500;color:var(--text)}
+.ur-hora{font-size:0.6rem;color:var(--muted);margin-top:1px;font-family:'JetBrains Mono',monospace}
+.ur-monto{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:var(--verde)}
+
+/* ── HISTORIAL ── */
+.historial-scroll{padding:0 12px 10px;display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto}
+.hist-item{background:var(--surface2);border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;animation:slideIn 0.2s ease;border:1px solid var(--border)}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.hi-left{display:flex;align-items:center;gap:8px}
+.hi-num{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--muted);min-width:28px}
+.hi-ruta{font-size:0.76rem;font-weight:500;color:var(--text)}
+.hi-hora{font-size:0.58rem;color:var(--muted);margin-top:1px;font-family:'JetBrains Mono',monospace}
+.hi-precio{font-family:'Bebas Neue',sans-serif;font-size:1.05rem}
+.hist-vacio{text-align:center;color:var(--muted);font-size:0.76rem;padding:20px;font-style:italic}
+
+/* ── TEMPORIZADOR ── */
+.timer-hero{margin:12px;background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden}
+.timer-ruta-label{background:var(--surface2);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.trl-texto{font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.trl-ruta{font-size:0.72rem;font-weight:600;color:var(--text)}
+.timer-display{padding:22px 16px 18px;text-align:center;position:relative}
+.timer-ring-wrap{position:relative;width:160px;height:160px;margin:0 auto 14px}
+.timer-svg{width:160px;height:160px;transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:var(--border);stroke-width:8}
+.ring-prog{fill:none;stroke-width:8;stroke-linecap:round;stroke-dasharray:452;stroke-dashoffset:452;transition:stroke-dashoffset 0.8s ease,stroke 0.5s ease}
+.timer-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.timer-num{font-family:'JetBrains Mono',monospace;font-size:2.4rem;font-weight:700;line-height:1;letter-spacing:2px}
+.timer-sub{font-size:0.56rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.timer-estado{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;margin-bottom:4px}
+.timer-multa{font-family:'JetBrains Mono',monospace;font-size:0.95rem;font-weight:700;color:var(--rojo);min-height:22px}
+.timer-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 12px}
+.tbtn{padding:13px;border-radius:12px;border:none;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;transition:transform 0.1s}
+.tbtn:active{transform:scale(0.95)}
+.tbtn-start{background:var(--verde);color:#000}
+.tbtn-reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+
+.freq-card{margin:0 12px 12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.freq-head{padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
+.freq-head-title{font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.freq-body{padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+.freq-val{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;color:var(--amarillo)}
+.freq-semaforo{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
+
+.alertas-log{margin:0 12px;display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto}
+.alerta-item{border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:8px;border:1px solid}
+.alerta-item.verde{background:rgba(0,214,143,0.08);border-color:rgba(0,214,143,0.2)}
+.alerta-item.amarillo{background:rgba(245,200,0,0.08);border-color:rgba(245,200,0,0.2)}
+.alerta-item.naranja{background:rgba(255,107,26,0.1);border-color:rgba(255,107,26,0.25)}
+.alerta-item.rojo{background:rgba(255,61,90,0.1);border-color:rgba(255,61,90,0.25)}
+.alerta-item.azul{background:rgba(77,184,255,0.08);border-color:rgba(77,184,255,0.2)}
+.ai-icon{font-size:0.95rem;min-width:18px;text-align:center}
+.ai-texto{font-size:0.72rem;font-weight:500;color:var(--text);flex:1}
+.ai-hora{font-size:0.56rem;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+
+/* ── ADMIN / REPORTES ── */
+.admin-page{padding:12px 12px 80px}
+.admin-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:10px}
+.admin-card-head{padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+
+.report-tabs{display:flex;gap:6px;padding:10px 12px 0}
+.rtab{background:var(--surface);border:1px solid var(--border);color:var(--muted);font-size:0.6rem;padding:5px 12px;border-radius:20px;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s}
+.rtab.active{background:var(--amarillo);color:#000;border-color:var(--amarillo)}
+
+.report-content{display:none;padding:10px 12px 0}
+.report-content.active{display:block}
+
+.admin-tabla{width:100%;border-collapse:collapse}
+.admin-tabla th{font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:7px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.admin-tabla td{padding:9px 12px;font-size:0.78rem;color:var(--text);border-bottom:1px solid var(--border)}
+.admin-tabla tr:last-child td{border-bottom:none}
+.admin-tabla td.money{font-family:'Bebas Neue',sans-serif;font-size:1rem;text-align:right}
+
+.total-box{background:var(--bg);border-radius:12px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;margin:10px 0 0;border:1px solid var(--border)}
+.tb-label{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.tb-val{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--amarillo)}
+.tb-pax{font-size:0.58rem;color:var(--muted);margin-top:1px}
+
+.btn-nuevo-turno{width:100%;padding:13px;background:linear-gradient(135deg,var(--naranja),#FF3D5A);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:3px;color:#fff;margin-top:8px;box-shadow:0 4px 16px rgba(255,107,26,0.3)}
+
+.dia-liquidado{background:rgba(0,214,143,0.06);border:1px solid rgba(0,214,143,0.2);border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.dl-fecha{font-size:0.72rem;font-weight:600;color:var(--text)}
+.dl-pax{font-size:0.6rem;color:var(--muted);margin-top:1px}
+.dl-total{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:var(--verde)}
+
+/* ── TOAST ── */
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--verde);color:#000;padding:8px 18px;border-radius:30px;font-size:0.8rem;font-weight:700;opacity:0;transition:opacity 0.2s,transform 0.2s;z-index:600;white-space:nowrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,214,143,0.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.alerta{background:var(--rojo);color:#fff;box-shadow:0 4px 16px rgba(255,61,90,0.5)}
+.toast.warn{background:var(--amarillo);color:#000;box-shadow:0 4px 16px rgba(245,200,0,0.4)}
+</style>
+</head>
+<body>
+
+<!-- ══ MODAL CONFIGURACIÓN INICIAL ══ -->
+<div class="modal-overlay" id="modalConfig">
+  <div class="modal-box">
+    <div class="modal-title">TU<span style="color:var(--amarillo)">NIM</span></div>
+    <div class="modal-sub">CONFIGURACIÓN DE TURNO · ACCESVIAL 2026</div>
+    <label class="modal-label">Placa del vehículo</label>
+    <input class="modal-input" id="inputPlaca" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+    <label class="modal-label">Fecha de inicio de ruta</label>
+    <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
+    <label class="modal-label">Hora de inicio</label>
+    <input class="modal-input" id="inputHoraInicio" type="time" autocomplete="off">
+    <button class="modal-btn" onclick="guardarConfigTurno()">▶ INICIAR TURNO</button>
+  </div>
+</div>
+
+<!-- CONFIRMACIÓN VISUAL GRANDE -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-icon">✅</div>
+    <div class="confirm-ruta" id="confirmRuta">—</div>
+    <div class="confirm-precio" id="confirmPrecio">$0</div>
+    <div class="confirm-num" id="confirmNum">#000</div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="app-header">
+  <div>
+    <div class="logo">TU<span>NIM</span><sub>© ACCESVIAL 2026 · FMBS</sub></div>
+  </div>
+  <div class="header-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+    <div class="header-time" id="horaActual">00:00</div>
+    <div class="header-date" id="fechaActual">—</div>
+    <div id="syncPill" class="sync-pill offline">⚡ LOCAL</div>
+  </div>
+</header>
+
+<!-- BARRA VEHÍCULO -->
+<div class="vehiculo-bar" id="vehiculoBar">
+  <div>
+    <div class="vbar-placa" id="vbarPlaca">---</div>
+  </div>
+  <div style="text-align:center">
+    <div class="vbar-inicio">Inicio: <span id="vbarFecha">—</span></div>
+    <div class="vbar-inicio">Hora: <span id="vbarHora">—</span></div>
+  </div>
+  <button class="vbar-edit" onclick="editarConfig()">✏ Editar</button>
+</div>
+
+<!-- VIAJE ACTUAL -->
+<div class="viaje-bar">
+  <div class="viaje-num" id="viajeLabel">🚌 VIAJE 1 DE 3</div>
+  <div class="viaje-btns">
+    <button class="btn-viaje activo" id="vbtn1" onclick="setViaje(1)">V1</button>
+    <button class="btn-viaje" id="vbtn2" onclick="setViaje(2)">V2</button>
+    <button class="btn-viaje" id="vbtn3" onclick="setViaje(3)">V3</button>
+  </div>
+</div>
+
+<!-- RESUMEN BAR -->
+<div class="resumen-bar">
+  <div class="rb-item">
+    <div class="rb-val" id="rbPax">0</div>
+    <div class="rb-lbl">Pasajeros hoy</div>
+  </div>
+  <div class="rb-item">
+    <div class="rb-val" id="rbTotal">$0</div>
+    <div class="rb-lbl">Recaudado hoy</div>
+  </div>
+  <div class="rb-item">
+    <div class="rb-val" id="rbViaje">$0</div>
+    <div class="rb-lbl">Este viaje</div>
+  </div>
+</div>
+
+<!-- TAB PASAJEROS -->
+<div class="tab-page active" id="page-pasajeros">
+  <div class="sec-head">
+    <div class="sec-title">¿A dónde vas?</div>
+    <button class="sec-action" onclick="deshacerUltimo()">↩ Deshacer</button>
+  </div>
+  <div class="destinos-grid" id="destinosGrid"></div>
+  <div class="ultimo-reg" id="ultimoReg">
+    <div class="ur-icon">🎫</div>
+    <div class="ur-info">
+      <div class="ur-texto" id="urTexto">Esperando primer pasajero...</div>
+      <div class="ur-hora" id="urHora">—</div>
+    </div>
+    <div class="ur-monto" id="urMonto"></div>
+  </div>
+  <div class="sec-head" style="padding-top:4px">
+    <div class="sec-title">Historial del viaje</div>
+    <button class="sec-action" onclick="confirmarNuevoTurno()">🗑 Nuevo turno</button>
+  </div>
+  <div class="historial-scroll" id="historialLista">
+    <div class="hist-vacio" id="histVacio">Sin registros aún</div>
+  </div>
+</div>
+
+<!-- TAB TEMPORIZADOR -->
+<div class="tab-page" id="page-timer">
+  <div style="padding-bottom:80px">
+    <div class="timer-hero">
+      <div class="timer-ruta-label">
+        <div>
+          <div class="trl-texto">Ruta activa</div>
+          <div class="trl-ruta">Funza El Coclí → Mosquera Parque</div>
+        </div>
+        <div style="font-size:0.58rem;color:var(--muted);text-align:right">
+          <div>Meta: <strong style="color:var(--text)">28 min</strong></div>
+          <div>Frec: <strong style="color:var(--text)">10 min</strong></div>
+        </div>
+      </div>
+      <div class="timer-display">
+        <div class="timer-ring-wrap">
+          <svg class="timer-svg" viewBox="0 0 160 160">
+            <circle class="ring-bg" cx="80" cy="80" r="72"/>
+            <circle class="ring-prog" id="ringProg" cx="80" cy="80" r="72"/>
+          </svg>
+          <div class="timer-center">
+            <div class="timer-num" id="timerNum" style="color:var(--verde)">00:00</div>
+            <div class="timer-sub" id="timerSub">LISTO</div>
+          </div>
+        </div>
+        <div class="timer-estado" id="timerEstado" style="color:var(--muted)">Presiona INICIAR al salir del Coclí</div>
+        <div class="timer-multa" id="timerMulta"></div>
+      </div>
+    </div>
+    <div class="timer-btns">
+      <button class="tbtn tbtn-start" id="btnTimer" onclick="toggleTimer()">▶ INICIAR</button>
+      <button class="tbtn tbtn-reset" onclick="resetTimer()">↺ REINICIAR</button>
+    </div>
+    <div class="freq-card">
+      <div class="freq-head"><span>🚌</span><div class="freq-head-title">Control de frecuencia — Coclí</div></div>
+      <div class="freq-body">
+        <div>
+          <div style="font-size:0.65rem;color:var(--muted);margin-bottom:2px">Último bus salió hace</div>
+          <div class="freq-val" id="freqVal">—</div>
+          <div style="font-size:0.58rem;color:var(--muted)">Objetivo: cada 10 min</div>
+        </div>
+        <div class="freq-semaforo" id="freqSemaforo" style="color:var(--muted);background:rgba(74,90,106,0.15)">⚪</div>
+      </div>
+    </div>
+    <div class="sec-head" style="padding-top:4px">
+      <div class="sec-title">Alertas del recorrido</div>
+    </div>
+    <div class="alertas-log" id="alertasLog">
+      <div class="hist-vacio">Sin alertas — inicia el temporizador</div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB REPORTES -->
+<div class="tab-page" id="page-reportes">
+  <div class="report-tabs">
+    <button class="rtab active" onclick="setReporte('hoy',this)">Hoy</button>
+    <button class="rtab" onclick="setReporte('semana',this)">Semana</button>
+    <button class="rtab" onclick="setReporte('mes',this)">Mes</button>
+    <button class="rtab" onclick="setReporte('historial',this)">Días</button>
+  </div>
+  <div class="report-content active" id="rep-hoy">
+    <div style="padding-top:10px">
+      <div class="admin-card">
+        <div class="admin-card-head">📋 Desglose por ruta — Hoy</div>
+        <table class="admin-tabla">
+          <thead><tr><th>Ruta</th><th style="text-align:center">Pax</th><th style="text-align:right">Total</th></tr></thead>
+          <tbody id="tablaHoy"></tbody>
+        </table>
+        <div style="padding:10px 12px 0">
+          <div class="total-box">
+            <div>
+              <div class="tb-label">Total recaudado hoy</div>
+              <div class="tb-pax" id="paxHoy">0 pasajeros</div>
+            </div>
+            <div class="tb-val" id="totalHoy">$0</div>
+          </div>
+        </div>
+        <div style="padding:10px 12px">
+          <button class="btn-nuevo-turno" onclick="confirmarNuevoTurno()">🔄 NUEVO TURNO</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="report-content" id="rep-semana">
+    <div style="padding-top:10px">
+      <div class="admin-card">
+        <div class="admin-card-head">📅 Resumen semanal</div>
+        <table class="admin-tabla">
+          <thead><tr><th>Día</th><th style="text-align:center">Pax</th><th style="text-align:right">Total</th></tr></thead>
+          <tbody id="tablaSemana"></tbody>
+        </table>
+        <div style="padding:10px 12px 12px">
+          <div class="total-box">
+            <div><div class="tb-label">Total semana</div><div class="tb-pax" id="paxSemana">0 pasajeros</div></div>
+            <div class="tb-val" id="totalSemana">$0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="report-content" id="rep-mes">
+    <div style="padding-top:10px">
+      <div class="admin-card">
+        <div class="admin-card-head">📆 Resumen mensual</div>
+        <table class="admin-tabla">
+          <thead><tr><th>Semana</th><th style="text-align:center">Pax</th><th style="text-align:right">Total</th></tr></thead>
+          <tbody id="tablaMes"></tbody>
+        </table>
+        <div style="padding:10px 12px 12px">
+          <div class="total-box">
+            <div><div class="tb-label">Total mes</div><div class="tb-pax" id="paxMes">0 pasajeros</div></div>
+            <div class="tb-val" id="totalMes">$0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="report-content" id="rep-historial">
+    <div style="padding-top:10px">
+      <div class="admin-card">
+        <div class="admin-card-head">🗂 Historial por día</div>
+        <div style="padding:10px 12px 12px" id="historialDias">
+          <div class="hist-vacio">Sin días registrados aún</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB TARIFAS -->
+<div class="tab-page" id="page-tarifas">
+  <div class="admin-page">
+    <div class="admin-card">
+      <div class="admin-card-head">🗺 Tarifas del corredor Funza · Mosquera · Bogotá · Soacha</div>
+      <table class="admin-tabla">
+        <thead><tr><th>Ruta</th><th style="text-align:right">Tarifa</th></tr></thead>
+        <tbody id="tarifasTabla"></tbody>
+      </table>
+    </div>
+    <div style="text-align:center;padding:16px;font-size:0.6rem;color:var(--muted)">
+      TUNIM © 2026 ACCESVIAL<br>
+      ID: TUNIM-ACCESVIAL-20260608-COR-FMBS<br>
+      Ley 23 de 1982 — Decisión Andina 351 de 1993
+    </div>
+  </div>
+</div>
+
+<!-- TABS NAV -->
+<nav class="tabs-nav">
+  <button class="tab-btn active" onclick="setTab('pasajeros',this)"><span class="tab-icon">🎫</span>Pasajeros</button>
+  <button class="tab-btn" onclick="setTab('timer',this)"><span class="tab-icon">⏱</span>Tiempo</button>
+  <button class="tab-btn" onclick="setTab('reportes',this)"><span class="tab-icon">📊</span>Reportes</button>
+  <button class="tab-btn" onclick="setTab('tarifas',this)"><span class="tab-icon">🗺</span>Tarifas</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// © 2026 ACCESVIAL — TUNIM
+// ID: TUNIM-ACCESVIAL-20260608-COR-FMBS
+// ══════════════════════════════════════════════════
+const _TUNIM={producto:"TUNIM",autor:"ACCESVIAL",fecha:"2026-06-08",id:"TUNIM-ACCESVIAL-20260608-COR-FMBS"};
+Object.freeze(_TUNIM);
+
+const RUTAS=[
+  {nombre:"Soacha Interno",              desde:"Soacha",  hasta:"Centro",  precio:2300},
+  {nombre:"1a Mayo/Villavicencio→Soacha",desde:"Bogotá",  hasta:"Soacha",  precio:3300},
+  {nombre:"Soacha ↔ Bogotá",            desde:"Soacha",  hasta:"Bogotá",  precio:3700},
+  {nombre:"Funza ↔ Mosquera",           desde:"Funza",   hasta:"Mosquera",precio:3000},
+  {nombre:"Funza→Bogotá (Cl13/Cali)",   desde:"Funza",   hasta:"Bogotá",  precio:6200},
+  {nombre:"Bogotá ↔ Mosquera/Funza",    desde:"Bogotá",  hasta:"Funza",   precio:7000},
+  {nombre:"Soacha ↔ Funza",             desde:"Soacha",  hasta:"Funza",   precio:8000},
+  {nombre:"Planadas Río→Portal Dorado", desde:"Planadas", hasta:"Bogotá",  precio:3400},
+];
+
+const META_MIN=28, MULTA1=10000, MULTAN=5000;
+const STORAGE_KEY="tunim_v3";
+const HIST_KEY="tunim_hist_v3";
+const CONFIG_KEY="tunim_config_v1";
+
+// ══ CONFIG TURNO (placa + fecha + hora) ══
+let configTurno = cargarConfig();
+
+function cargarConfig(){
+  try{
+    const d=localStorage.getItem(CONFIG_KEY);
+    if(d) return JSON.parse(d);
+  }catch(e){}
+  return {placa:"", fechaInicio:"", horaInicio:""};
+}
+
+function guardarConfigTurno(){
+  const placa=document.getElementById("inputPlaca").value.trim().toUpperCase();
+  const fecha=document.getElementById("inputFecha").value;
+  const hora=document.getElementById("inputHoraInicio").value;
+  if(!placa){mostrarToast("⚠ Ingresa la placa","alerta");return;}
+  if(!fecha){mostrarToast("⚠ Selecciona la fecha","alerta");return;}
+  configTurno={placa, fechaInicio:fecha, horaInicio:hora||"--:--"};
+  try{localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno));}catch(e){}
+  document.getElementById("modalConfig").style.display="none";
+  actualizarBarraVehiculo();
+  sincronizarConfigFirebase();
+  mostrarToast("✅ Turno configurado","");
+}
+
+function editarConfig(){
+  const m=document.getElementById("modalConfig");
+  document.getElementById("inputPlaca").value=configTurno.placa||"";
+  document.getElementById("inputFecha").value=configTurno.fechaInicio||"";
+  document.getElementById("inputHoraInicio").value=configTurno.horaInicio||"";
+  m.style.display="flex";
+}
+
+function actualizarBarraVehiculo(){
+  document.getElementById("vbarPlaca").textContent=configTurno.placa||"---";
+  if(configTurno.fechaInicio){
+    const d=new Date(configTurno.fechaInicio+"T12:00:00");
+    const dias=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+    const meses=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    document.getElementById("vbarFecha").textContent=dias[d.getDay()]+" "+d.getDate()+" "+meses[d.getMonth()];
+  }else{
+    document.getElementById("vbarFecha").textContent="—";
+  }
+  document.getElementById("vbarHora").textContent=configTurno.horaInicio||"—";
+}
+
+// Mostrar modal si no hay config, si no ir directo
+window.addEventListener("load",()=>{
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById("inputFecha").value=hoy;
+  document.getElementById("inputHoraInicio").value=new Date().toTimeString().slice(0,5);
+  if(!configTurno.placa){
+    document.getElementById("modalConfig").style.display="flex";
+  }else{
+    document.getElementById("modalConfig").style.display="none";
+    actualizarBarraVehiculo();
+  }
+});
+
+// ══ FIREBASE — SYNC ══
+let fbListo=false;
+window.addEventListener("fbReady",()=>{ fbListo=true; sincronizarConfigFirebase(); });
+
+async function sincronizarConfigFirebase(){
+  if(!fbListo||!window._fb||!configTurno.placa) return;
+  try{
+    const {db,doc,setDoc,serverTimestamp}=window._fb;
+    await setDoc(doc(db,"turnos",configTurno.placa+"_"+configTurno.fechaInicio),{
+      placa: configTurno.placa,
+      fechaInicio: configTurno.fechaInicio,
+      horaInicio: configTurno.horaInicio,
+      actualizadoEn: serverTimestamp()
+    },{merge:true});
+    setSyncStatus("ok");
+  }catch(e){
+    console.warn("Firebase sync error:",e);
+    setSyncStatus("offline");
+  }
+}
+
+async function guardarPasajeroFirebase(reg){
+  if(!fbListo||!window._fb||!configTurno.placa) return;
+  try{
+    const {db,collection,addDoc,serverTimestamp}=window._fb;
+    await addDoc(collection(db,"pasajeros"),{
+      placa: configTurno.placa,
+      fechaInicio: configTurno.fechaInicio,
+      rutaNombre: reg.nombre,
+      rutaIdx: reg.idx,
+      precio: reg.precio,
+      viaje: reg.viaje,
+      hora: reg.hora,
+      numPasajero: reg.num,
+      registradoEn: serverTimestamp()
+    });
+    setSyncStatus("ok");
+  }catch(e){
+    setSyncStatus("pending");
+  }
+}
+
+async function guardarLiquidacionFirebase(resumen){
+  if(!fbListo||!window._fb||!configTurno.placa) return;
+  try{
+    const {db,doc,setDoc,serverTimestamp}=window._fb;
+    const key=configTurno.placa+"_"+resumen.fecha;
+    await setDoc(doc(db,"liquidaciones",key),{
+      placa: configTurno.placa,
+      ...resumen,
+      guardadoEn: serverTimestamp()
+    },{merge:true});
+    setSyncStatus("ok");
+  }catch(e){ setSyncStatus("pending"); }
+}
+
+function setSyncStatus(estado){
+  const p=document.getElementById("syncPill");
+  if(estado==="ok"){p.className="sync-pill ok";p.textContent="☁ SYNC";}
+  else if(estado==="pending"){p.className="sync-pill pending";p.textContent="⏳ SYNC";}
+  else{p.className="sync-pill offline";p.textContent="⚡ LOCAL";}
+}
+
+// ══ ESTADO ══
+let estado=cargarEstado();
+let viajeActual=estado.viajeActual||1;
+
+function diaKey(d=new Date()){
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+
+function estadoDefault(){
+  return{
+    conteos:new Array(RUTAS.length).fill(0),
+    conteosViaje:[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)],
+    historial:[],
+    turnoInicio:new Date().toISOString(),
+    viajeActual:1,
+    diaActual:diaKey()
+  };
+}
+
+function cargarEstado(){
+  try{
+    const d=localStorage.getItem(STORAGE_KEY);
+    if(d){
+      const p=JSON.parse(d);
+      if(p.diaActual&&p.diaActual!==diaKey()){liquidarDia(p);return estadoDefault();}
+      if(!p.conteos||p.conteos.length!==RUTAS.length)return estadoDefault();
+      if(!p.conteosViaje)p.conteosViaje=[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
+      return p;
+    }
+  }catch(e){}
+  return estadoDefault();
+}
+
+function guardarEstado(){
+  estado.viajeActual=viajeActual;
+  estado.diaActual=diaKey();
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(estado));}catch(e){}
+}
+
+// ══ LIQUIDACIÓN ══
+function liquidarDia(est){
+  try{
+    const totalPax=est.conteos.reduce((a,b)=>a+b,0);
+    const totalDin=est.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+    if(totalPax===0)return;
+    const hist=cargarHistDias();
+    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,conteos:[...est.conteos]};
+    hist.unshift(resumen);
+    localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,90)));
+    guardarLiquidacionFirebase(resumen);
+  }catch(e){}
+}
+
+function cargarHistDias(){
+  try{const d=localStorage.getItem(HIST_KEY);if(d)return JSON.parse(d);}catch(e){}
+  return[];
+}
+
+function verificarCambioDia(){
+  const hoy=diaKey();
+  if(estado.diaActual&&estado.diaActual!==hoy){
+    liquidarDia(estado);estado=estadoDefault();viajeActual=1;
+    guardarEstado();actualizarUI();mostrarToast("📅 Nuevo día — datos liquidados","warn");
+  }
+}
+setInterval(verificarCambioDia,60000);
+
+// ══ VIAJES ══
+function setViaje(n){
+  viajeActual=n;
+  document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i+1===n));
+  document.getElementById("viajeLabel").textContent="🚌 VIAJE "+n+" DE 3";
+  actualizarUI();guardarEstado();
+}
+
+// ══ TEMPORIZADOR ══
+let timerRunning=false,timerStart=null,timerInterval=null;
+let alertasFired=new Set(),alertasLog=[];
+
+const ALERTAS=[
+  {min:15,tipo:"azul",   icon:"🔵",msg:"Vas muy adelante — regula velocidad"},
+  {min:20,tipo:"verde",  icon:"🟢",msg:"Faltan 8 minutos — buen ritmo"},
+  {min:25,tipo:"amarillo",icon:"🟡",msg:"Faltan 3 minutos — mantén el paso"},
+  {min:27,tipo:"naranja",icon:"🟠",msg:"¡1 MINUTO! Llega a tiempo"},
+  {min:29,tipo:"rojo",   icon:"🔴",msg:"PENALIZACIÓN — Minuto 1: $10.000"},
+];
+
+function toggleTimer(){
+  if(!timerRunning){
+    timerStart=Date.now();timerRunning=true;alertasFired.clear();
+    document.getElementById("btnTimer").textContent="⏸ PAUSAR";
+    document.getElementById("btnTimer").style.background="var(--naranja)";
+    timerInterval=setInterval(tickTimer,500);
+    addAlerta("verde","🚌","Salida registrada desde Funza El Coclí");
+    mostrarToast("⏱ Temporizador iniciado","");
+    tickTimer();
+  }else{
+    clearInterval(timerInterval);timerRunning=false;
+    document.getElementById("btnTimer").textContent="▶ CONTINUAR";
+    document.getElementById("btnTimer").style.background="var(--verde)";
+  }
+}
+
+function resetTimer(){
+  clearInterval(timerInterval);timerRunning=false;timerStart=null;alertasFired.clear();alertasLog=[];
+  document.getElementById("btnTimer").textContent="▶ INICIAR";
+  document.getElementById("btnTimer").style.background="var(--verde)";
+  document.getElementById("timerNum").textContent="00:00";
+  document.getElementById("timerNum").style.color="var(--verde)";
+  document.getElementById("timerSub").textContent="LISTO";
+  document.getElementById("timerEstado").textContent="Presiona INICIAR al salir del Coclí";
+  document.getElementById("timerEstado").style.color="var(--muted)";
+  document.getElementById("timerMulta").textContent="";
+  document.getElementById("ringProg").style.strokeDashoffset="452";
+  document.getElementById("ringProg").style.stroke="var(--verde)";
+  document.getElementById("alertasLog").innerHTML='<div class="hist-vacio">Sin alertas — inicia el temporizador</div>';
+}
+
+function tickTimer(){
+  if(!timerStart)return;
+  const elapsed=(Date.now()-timerStart)/1000;
+  const mins=Math.floor(elapsed/60),secs=Math.floor(elapsed%60);
+  document.getElementById("timerNum").textContent=String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0");
+  const ring=document.getElementById("ringProg");
+  ring.style.strokeDashoffset=452-Math.min(452*(mins/META_MIN),452);
+  if(mins<15){ring.style.stroke="var(--azul)";document.getElementById("timerNum").style.color="var(--azul)";document.getElementById("timerEstado").textContent="⚡ Vas muy adelante — regula";document.getElementById("timerEstado").style.color="var(--azul)";document.getElementById("timerSub").textContent="REGULANDO";}
+  else if(mins<25){ring.style.stroke="var(--verde)";document.getElementById("timerNum").style.color="var(--verde)";document.getElementById("timerEstado").textContent="✅ En tiempo perfecto";document.getElementById("timerEstado").style.color="var(--verde)";document.getElementById("timerSub").textContent="EN TIEMPO";}
+  else if(mins<28){ring.style.stroke="var(--amarillo)";document.getElementById("timerNum").style.color="var(--amarillo)";document.getElementById("timerEstado").textContent="⚠️ Apura — casi en el límite";document.getElementById("timerEstado").style.color="var(--amarillo)";document.getElementById("timerSub").textContent="APURANDO";}
+  else if(mins===28){ring.style.stroke="var(--naranja)";document.getElementById("timerNum").style.color="var(--naranja)";document.getElementById("timerEstado").textContent="🏁 ¡LLEGASTE! Tiempo exacto";document.getElementById("timerEstado").style.color="var(--naranja)";document.getElementById("timerSub").textContent="LLEGADA";}
+  else{
+    const mx=mins-28;const multa=mx>=1?MULTA1+(mx-1)*MULTAN:0;
+    ring.style.stroke="var(--rojo)";ring.style.strokeDashoffset="0";
+    document.getElementById("timerNum").style.color="var(--rojo)";
+    document.getElementById("timerEstado").textContent="🚨 PENALIZACIÓN ACTIVA";
+    document.getElementById("timerEstado").style.color="var(--rojo)";
+    document.getElementById("timerSub").textContent="+"+mx+" MIN TARDE";
+    document.getElementById("timerMulta").textContent="Multa acumulada: $"+multa.toLocaleString("es-CO");
+  }
+  ALERTAS.forEach(a=>{
+    if(mins>=a.min&&!alertasFired.has(a.min)){
+      alertasFired.add(a.min);addAlerta(a.tipo,a.icon,a.msg);sonarAlarma(a.min>=29?"alarm":a.min>=27?"urgent":a.min>=25?"medium":"soft");
+      mostrarToast(a.icon+" "+a.msg,a.min>=29?"alerta":a.min>=27?"alerta":"warn");
+    }
+  });
+  if(mins>29&&mins<=60&&!alertasFired.has("m"+mins)){
+    alertasFired.add("m"+mins);
+    addAlerta("rojo","💸","Multa min "+(mins-28)+": $"+(MULTA1+(mins-29)*MULTAN).toLocaleString("es-CO"));
+    sonarAlarma("alarm");
+  }
+}
+
+function addAlerta(tipo,icon,msg){
+  const hora=new Date().toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  alertasLog.unshift({tipo,icon,msg,hora});renderAlertas();
+}
+function renderAlertas(){
+  const log=document.getElementById("alertasLog");
+  if(!alertasLog.length){log.innerHTML='<div class="hist-vacio">Sin alertas — inicia el temporizador</div>';return;}
+  log.innerHTML=alertasLog.slice(0,30).map(a=>`<div class="alerta-item ${a.tipo}"><div class="ai-icon">${a.icon}</div><div class="ai-texto">${a.msg}</div><div class="ai-hora">${a.hora}</div></div>`).join("");
+}
+
+// ══ SONIDO ══
+let audioCtx=null;
+function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
+function beep(freq,dur,vol,delay=0){try{const ctx=getAudio(),osc=ctx.createOscillator(),gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);osc.frequency.value=freq;osc.type="sine";gain.gain.setValueAtTime(0,ctx.currentTime+delay);gain.gain.linearRampToValueAtTime(vol,ctx.currentTime+delay+0.01);gain.gain.linearRampToValueAtTime(0,ctx.currentTime+delay+dur);osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+dur+0.05);}catch(e){}}
+function sonarAlarma(t){switch(t){case"soft":beep(880,0.2,0.2);break;case"medium":beep(660,0.25,0.3);beep(880,0.25,0.3,0.3);break;case"urgent":beep(880,0.2,0.4);beep(880,0.2,0.4,0.25);beep(1100,0.3,0.5,0.5);break;case"alarm":for(let i=0;i<4;i++)beep(1200,0.15,0.6,i*0.22);break;}}
+
+// ══ REGISTRAR PASAJERO ══
+let confirmTimer=null;
+function registrar(idx){
+  const ruta=RUTAS[idx];
+  const ahora=new Date();
+  const totalHoy=estado.historial.length+1;
+  const reg={idx,nombre:ruta.nombre,precio:ruta.precio,viaje:viajeActual,
+    hora:ahora.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),num:totalHoy};
+  estado.conteos[idx]++;
+  estado.conteosViaje[viajeActual-1][idx]++;
+  estado.historial.unshift(reg);
+  if(estado.historial.length>300)estado.historial.pop();
+  guardarEstado();
+  const btn=document.querySelector(`.btn-dest[data-idx="${idx}"]`);
+  btn.classList.remove("flash-anim");void btn.offsetWidth;btn.classList.add("flash-anim");
+  setTimeout(()=>btn.classList.remove("flash-anim"),300);
+  mostrarConfirmacion(ruta.nombre,ruta.precio,totalHoy);
+  sonarAlarma("soft");
+  actualizarUI();
+  // Guardar en Firebase
+  guardarPasajeroFirebase(reg);
+}
+
+function mostrarConfirmacion(nombre,precio,num){
+  document.getElementById("confirmRuta").textContent=nombre;
+  document.getElementById("confirmPrecio").textContent="$"+precio.toLocaleString("es-CO");
+  document.getElementById("confirmNum").textContent="Pasajero #"+String(num).padStart(3,"0")+" registrado ✓";
+  const ov=document.getElementById("confirmOverlay");
+  ov.classList.add("show");clearTimeout(confirmTimer);
+  confirmTimer=setTimeout(()=>ov.classList.remove("show"),700);
+}
+
+function deshacerUltimo(){
+  if(!estado.historial.length){mostrarToast("Sin registros que deshacer","alerta");return;}
+  const last=estado.historial[0];
+  estado.conteos[last.idx]=Math.max(0,estado.conteos[last.idx]-1);
+  estado.conteosViaje[last.viaje-1][last.idx]=Math.max(0,estado.conteosViaje[last.viaje-1][last.idx]-1);
+  estado.historial.shift();
+  guardarEstado();actualizarUI();mostrarToast("↩ Último registro eliminado","warn");
+}
+
+// ══ RENDER DESTINOS ══
+function renderDestinos(){
+  document.getElementById("destinosGrid").innerHTML=RUTAS.map((r,i)=>`
+    <button class="btn-dest" data-idx="${i}" onclick="registrar(${i})">
+      <div class="flash-layer"></div>
+      <div class="dest-origen">${r.desde} →</div>
+      <div class="dest-nombre">${r.hasta}</div>
+      <div class="dest-precio">$${r.precio.toLocaleString("es-CO")}</div>
+      <div class="dest-badge" id="badge${i}">${estado.conteos[i]}</div>
+    </button>`).join("");
+}
+
+// ══ ACTUALIZAR UI ══
+function actualizarUI(){
+  const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const viajeConteos=estado.conteosViaje[viajeActual-1];
+  const viajeDin=viajeConteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  document.getElementById("rbPax").textContent=totalPax;
+  document.getElementById("rbTotal").textContent=formatCorto(totalDin);
+  document.getElementById("rbViaje").textContent=formatCorto(viajeDin);
+  if(estado.historial.length>0){
+    const u=estado.historial[0];
+    document.getElementById("urTexto").textContent=u.nombre+" (Viaje "+u.viaje+")";
+    document.getElementById("urHora").textContent=u.hora+" · #"+String(u.num).padStart(3,"0");
+    document.getElementById("urMonto").textContent="$"+u.precio.toLocaleString("es-CO");
+  }
+  estado.conteos.forEach((c,i)=>{
+    const b=document.getElementById("badge"+i);
+    if(b){b.textContent=c;b.classList.toggle("show",c>0);}
+  });
+  const lista=document.getElementById("historialLista");
+  const vacio=document.getElementById("histVacio");
+  if(!estado.historial.length){vacio.style.display="block";lista.querySelectorAll(".hist-item").forEach(e=>e.remove());}
+  else{
+    vacio.style.display="none";lista.querySelectorAll(".hist-item").forEach(e=>e.remove());
+    estado.historial.slice(0,80).forEach(r=>{
+      const item=document.createElement("div");item.className="hist-item";
+      item.innerHTML=`<div class="hi-left"><div class="hi-num">#${String(r.num||"?").padStart(3,"0")}</div><div><div class="hi-ruta">${r.nombre}</div><div class="hi-hora">${r.hora} · V${r.viaje||1}</div></div></div><div class="hi-precio" style="color:var(--amarillo)">$${r.precio.toLocaleString("es-CO")}</div>`;
+      lista.appendChild(item);
+    });
+  }
+  let filasHoy="";let hayHoy=false;
+  RUTAS.forEach((r,i)=>{
+    if(estado.conteos[i]>0){hayHoy=true;
+      filasHoy+=`<tr><td>${r.nombre}</td><td style="text-align:center;font-weight:600">${estado.conteos[i]}</td><td class="money" style="color:var(--verde)">$${(estado.conteos[i]*r.precio).toLocaleString("es-CO")}</td></tr>`;
+    }
+  });
+  if(!hayHoy)filasHoy=`<tr><td colspan="3" style="text-align:center;color:var(--muted);font-style:italic;padding:16px">Sin registros hoy</td></tr>`;
+  document.getElementById("tablaHoy").innerHTML=filasHoy;
+  document.getElementById("totalHoy").textContent="$"+totalDin.toLocaleString("es-CO");
+  document.getElementById("paxHoy").textContent=totalPax+" pasajeros";
+  renderReporteSemana();renderReporteMes();renderHistorialDias();
+}
+
+function renderReporteSemana(){
+  const hist=cargarHistDias();const hoy=new Date();const dias=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(hoy);d.setDate(hoy.getDate()-i);const key=diaKey(d);
+    const entrada=hist.find(h=>h.fecha===key);
+    if(key===diaKey()){dias.push({fecha:key,pax:estado.conteos.reduce((a,b)=>a+b,0),total:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),esHoy:true});}
+    else{dias.push({fecha:key,pax:entrada?entrada.pax:0,total:entrada?entrada.total:0,esHoy:false});}
+  }
+  const semPax=dias.reduce((a,b)=>a+b.pax,0),semDin=dias.reduce((a,b)=>a+b.total,0);
+  const nombres=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  document.getElementById("tablaSemana").innerHTML=dias.map(d=>{
+    const fecha=new Date(d.fecha+"T12:00:00");
+    return`<tr style="${d.esHoy?"font-weight:700":""}"><td>${nombres[fecha.getDay()]} ${fecha.getDate()}${d.esHoy?" (hoy)":""}</td><td style="text-align:center">${d.pax}</td><td class="money" style="color:${d.total>0?"var(--verde)":"var(--muted)"}">$${d.total.toLocaleString("es-CO")}</td></tr>`;
+  }).join("");
+  document.getElementById("totalSemana").textContent="$"+semDin.toLocaleString("es-CO");
+  document.getElementById("paxSemana").textContent=semPax+" pasajeros";
+}
+
+function renderReporteMes(){
+  const hist=cargarHistDias();const hoy=new Date();const semanas=[];
+  for(let s=3;s>=0;s--){
+    const inicio=new Date(hoy);inicio.setDate(hoy.getDate()-hoy.getDay()-s*7);
+    const fin=new Date(inicio);fin.setDate(inicio.getDate()+6);
+    let pax=0,total=0;
+    for(let d=new Date(inicio);d<=fin;d.setDate(d.getDate()+1)){
+      const key=diaKey(d);
+      if(key===diaKey()){pax+=estado.conteos.reduce((a,b)=>a+b,0);total+=estado.conteos.reduce((ss,c,i)=>ss+c*RUTAS[i].precio,0);}
+      else{const e=hist.find(h=>h.fecha===key);if(e){pax+=e.pax;total+=e.total;}}
+    }
+    semanas.push({label:`Sem ${4-s} (${inicio.getDate()}/${inicio.getMonth()+1})`,pax,total});
+  }
+  document.getElementById("tablaMes").innerHTML=semanas.map(s=>`<tr><td>${s.label}</td><td style="text-align:center">${s.pax}</td><td class="money" style="color:${s.total>0?"var(--verde)":"var(--muted)"}">$${s.total.toLocaleString("es-CO")}</td></tr>`).join("");
+  document.getElementById("totalMes").textContent="$"+(semanas.reduce((a,b)=>a+b.total,0)).toLocaleString("es-CO");
+  document.getElementById("paxMes").textContent=(semanas.reduce((a,b)=>a+b.pax,0))+" pasajeros";
+}
+
+function renderHistorialDias(){
+  const hist=cargarHistDias();const cont=document.getElementById("historialDias");
+  if(!hist.length){cont.innerHTML='<div class="hist-vacio">Sin días registrados aún</div>';return;}
+  cont.innerHTML=hist.slice(0,30).map(d=>`
+    <div class="dia-liquidado">
+      <div><div class="dl-fecha">${formatFecha(d.fecha)}</div><div class="dl-pax">${d.pax} pasajeros · liquidado automáticamente</div></div>
+      <div class="dl-total">$${d.total.toLocaleString("es-CO")}</div>
+    </div>`).join("");
+}
+
+function formatFecha(key){
+  const d=new Date(key+"T12:00:00");
+  const dias=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  const meses=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  return dias[d.getDay()]+" "+d.getDate()+" "+meses[d.getMonth()];
+}
+
+function confirmarNuevoTurno(){
+  if(confirm("¿Iniciar nuevo turno? El día actual se guardará en el historial.")){
+    liquidarDia(estado);estado=estadoDefault();viajeActual=1;
+    guardarEstado();resetTimer();
+    document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i===0));
+    document.getElementById("viajeLabel").textContent="🚌 VIAJE 1 DE 3";
+    actualizarUI();mostrarToast("🔄 Nuevo turno iniciado","");
+  }
+}
+
+function setTab(name,btn){
+  document.querySelectorAll(".tab-page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById("page-"+name).classList.add("active");btn.classList.add("active");
+  if(name==="reportes")actualizarUI();
+}
+
+function setReporte(name,btn){
+  document.querySelectorAll(".report-content").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".rtab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("rep-"+name).classList.add("active");btn.classList.add("active");
+}
+
+function actualizarReloj(){
+  const n=new Date();
+  document.getElementById("horaActual").textContent=n.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
+  document.getElementById("fechaActual").textContent=n.toLocaleDateString("es-CO",{weekday:"short",day:"numeric",month:"short"}).toUpperCase();
+}
+setInterval(actualizarReloj,1000);actualizarReloj();
+
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){actualizarReloj();actualizarUI();}});
+
+let toastTimer=null;
+function mostrarToast(msg,tipo=""){
+  const t=document.getElementById("toast");t.textContent=msg;
+  t.className="toast "+(tipo||"")+" show";
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2500);
+}
+
+function formatCorto(n){
+  if(n>=1000000)return"$"+(n/1000000).toFixed(1)+"M";
+  if(n>=1000)return"$"+Math.round(n/1000)+"k";
+  return"$"+n;
+}
+
+function renderTarifasAdmin(){
+  document.getElementById("tarifasTabla").innerHTML=RUTAS.map(r=>`<tr><td>${r.nombre}</td><td class="money" style="color:var(--amarillo)">$${r.precio.toLocaleString("es-CO")}</td></tr>`).join("");
+}
+
+// ══ INIT ══
+renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
+</script>
+</body>
+</html>
