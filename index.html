@@ -43,7 +43,15 @@
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
   const auth = getAuth(app);
-
+// Habilitar Persistencia Local Offline
+import { enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code == 'failed-precondition') {
+        console.warn("Persistencia falló: Múltiples pestañas abiertas");
+    } else if (err.code == 'unimplemented') {
+        console.warn("El navegador no soporta persistencia");
+    }
+});
   // Exponer globalmente para usar desde el script principal
   window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth, signInAnonymously, onAuthStateChanged };
   window._fbReady = false;
