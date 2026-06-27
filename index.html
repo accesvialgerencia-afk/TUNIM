@@ -27,9 +27,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
   import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged }
-    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-
+ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
   // ══ CONFIGURACIÓN FIREBASE — TUNIM ══
   const firebaseConfig = {
     apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
