@@ -54,16 +54,65 @@ enableIndexedDbPersistence(db).catch((err) => {
   window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth, signInAnonymously, onAuthStateChanged };
   window._fbReady = false;
 
-  // Login anónimo automático
-  signInAnonymously(auth).then(() => {
-    console.log("✅ Firebase Auth OK");
-    window._fbReady = true;
-    window.dispatchEvent(new Event("fbReady"));
-  }).catch(e => {
-    console.warn("Firebase Auth error:", e);
-    window._fbReady = true; // continuar en modo local si falla
-    window.dispatchEvent(new Event("fbReady"));
-  });
+  // Función Global para Iniciar Sesión por Roles
+window.iniciarSesionPorRol = function(correo, contrasena) {
+    signInWithEmailAndPassword(auth, correo, contrasena)
+        .then(async (userCredential) => {
+            const user = userCredential.user;
+            
+            // Buscar el rol del usuario en la colección "usuarios" de Firestore
+            const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+            
+            if (userDoc.exists()) {
+                const datosUsuario = userDoc.data();
+                const rol = datosUsuario.rol; // "conductor", "empresa" o "admin"
+                
+                console.log(`🔑 Sesión iniciada como: ${rol}`);
+                window._fbReady = true;
+                
+                // Aplicar restricciones visuales en la interfaz según el Rol
+                configurarInterfazPorRol(rol);
+                
+                // Cerrar modal de login si existe
+                const modal = document.getElementById("modalConfig");
+                if (modal) modal.style.display = "none";
+            } else {
+                alert("Error: El usuario no tiene un rol asignado en el sistema.");
+            }
+        })
+        .catch((error) => {
+            console.error("Error de autenticación:", error);
+            alert("Credenciales incorrectas. Inténtalo de nuevo.");
+        });
+};
+
+// Función para ocultar pestañas según el rol
+function configurarInterfazPorRol(rol) {
+    const tabReportes = document.getElementById("vbtnReportes") || document.querySelector('[onclick*="reportes"]');
+    
+    if (rol === "conductor") {
+        if (tabReportes) tabReportes.style.display = "none";
+        alert("¡Bienvenido Conductor! Ruta autorizada.");
+    } else if (rol === "admin" || rol === "empresa") {
+        if (tabReportes) tabReportes.style.display = "flex";
+        alert(`¡Bienvenido Panel de Control ${rol.toUpperCase()}!`);
+    }
+}
+
+// Escuchar cambios de estado de autenticación de Firebase
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+        if (userDoc.exists()) {
+            configurarInterfazPorRol(userDoc.data().rol);
+            const modal = document.getElementById("modalConfig");
+            if (modal) modal.style.display = "none";
+        }
+    } else {
+        const modal = document.getElementById("modalConfig");
+        if (modal) modal.style.display = "flex";
+    }
+});
 </script>
 
 <style>
