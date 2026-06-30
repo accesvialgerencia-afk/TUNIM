@@ -25,9 +25,11 @@
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp }
+  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, enableIndexedDbPersistence }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
- import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
   // ══ CONFIGURACIÓN FIREBASE — TUNIM ══
   const firebaseConfig = {
     apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
@@ -41,78 +43,27 @@
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
   const auth = getAuth(app);
-// Habilitar Persistencia Local Offline
-import { enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
-enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code == 'failed-precondition') {
-        console.warn("Persistencia falló: Múltiples pestañas abiertas");
-    } else if (err.code == 'unimplemented') {
-        console.warn("El navegador no soporta persistencia");
-    }
-});
+
+  // Persistencia offline (no rompe si falla)
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') console.warn("Persistencia: múltiples pestañas abiertas");
+    else if (err.code === 'unimplemented') console.warn("El navegador no soporta persistencia offline");
+  });
+
   // Exponer globalmente para usar desde el script principal
-  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth, signInAnonymously, onAuthStateChanged };
+  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth };
   window._fbReady = false;
 
-  // Función Global para Iniciar Sesión por Roles
-window.iniciarSesionPorRol = function(correo, contrasena) {
-    signInWithEmailAndPassword(auth, correo, contrasena)
-        .then(async (userCredential) => {
-            const user = userCredential.user;
-            
-            // Buscar el rol del usuario en la colección "usuarios" de Firestore
-            const userDoc = await getDoc(doc(db, "usuarios", user.uid));
-            
-            if (userDoc.exists()) {
-                const datosUsuario = userDoc.data();
-                const rol = datosUsuario.rol; // "conductor", "empresa" o "admin"
-                
-                console.log(`🔑 Sesión iniciada como: ${rol}`);
-                window._fbReady = true;
-                
-                // Aplicar restricciones visuales en la interfaz según el Rol
-                configurarInterfazPorRol(rol);
-                
-                // Cerrar modal de login si existe
-                const modal = document.getElementById("modalConfig");
-                if (modal) modal.style.display = "none";
-            } else {
-                alert("Error: El usuario no tiene un rol asignado en el sistema.");
-            }
-        })
-        .catch((error) => {
-            console.error("Error de autenticación:", error);
-            alert("Credenciales incorrectas. Inténtalo de nuevo.");
-        });
-};
-
-// Función para ocultar pestañas según el rol
-function configurarInterfazPorRol(rol) {
-    const tabReportes = document.getElementById("vbtnReportes") || document.querySelector('[onclick*="reportes"]');
-    
-    if (rol === "conductor") {
-        if (tabReportes) tabReportes.style.display = "none";
-        alert("¡Bienvenido Conductor! Ruta autorizada.");
-    } else if (rol === "admin" || rol === "empresa") {
-        if (tabReportes) tabReportes.style.display = "flex";
-        alert(`¡Bienvenido Panel de Control ${rol.toUpperCase()}!`);
-    }
-}
-
-// Escuchar cambios de estado de autenticación de Firebase
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
-        if (userDoc.exists()) {
-            configurarInterfazPorRol(userDoc.data().rol);
-            const modal = document.getElementById("modalConfig");
-            if (modal) modal.style.display = "none";
-        }
-    } else {
-        const modal = document.getElementById("modalConfig");
-        if (modal) modal.style.display = "flex";
-    }
-});
+  // Login anónimo automático — funciona con el sistema de nombre+orden / orden+PIN de TUNIM
+  signInAnonymously(auth).then(() => {
+    console.log("✅ Firebase Auth OK");
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  }).catch((e) => {
+    console.warn("Firebase Auth error:", e);
+    window._fbReady = true; // continuar en modo local si falla
+    window.dispatchEvent(new Event("fbReady"));
+  });
 </script>
 
 <style>
@@ -133,6 +84,9 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 .modal-sub{font-size:0.7rem;color:var(--muted);margin-bottom:20px;letter-spacing:1px}
 .modal-label{font-size:0.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
 .modal-input{width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;outline:none;transition:border-color 0.2s}
+.gasto-input{width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;padding:9px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.9rem;font-weight:700;outline:none;transition:border-color 0.2s;-webkit-appearance:none}
+.gasto-input:focus{border-color:var(--rojo)}
+.gasto-input::placeholder{color:var(--muted)}
 .modal-input:focus{border-color:var(--amarillo)}
 .modal-input[type="date"]{letter-spacing:1px;text-transform:none}
 .modal-btn{width:100%;padding:14px;background:var(--amarillo);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;color:#000;margin-top:4px}
@@ -309,6 +263,25 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 
 /* ── TOAST ── */
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--verde);color:#000;padding:8px 18px;border-radius:30px;font-size:0.8rem;font-weight:700;opacity:0;transition:opacity 0.2s,transform 0.2s;z-index:600;white-space:nowrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,214,143,0.4)}
+
+/* ── MODAL DESHACER CON MOTIVO ── */
+.modal-deshacer{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:900;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-deshacer.show{display:flex}
+.md-box{background:var(--surface);border:1.5px solid var(--rojo);border-radius:18px;padding:20px;width:100%;max-width:360px}
+.md-titulo{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:2px;color:var(--rojo);margin-bottom:4px}
+.md-reg{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.md-reg-ruta{font-size:0.82rem;font-weight:600;color:var(--text)}
+.md-reg-detalle{font-size:0.62rem;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace}
+.md-reg-precio{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;color:var(--amarillo);margin-top:4px}
+.md-label{font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:block}
+.md-motivos{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.md-motivo{background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;cursor:pointer;font-size:0.82rem;color:var(--text);text-align:left;transition:border-color 0.2s}
+.md-motivo:active{transform:scale(0.97)}
+.md-motivo.selected{border-color:var(--rojo);color:var(--rojo);font-weight:600}
+.md-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.md-btn-confirmar{background:var(--rojo);color:#fff;border:none;border-radius:10px;padding:12px;font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:2px;cursor:pointer;opacity:0.4;pointer-events:none}
+.md-btn-confirmar.activo{opacity:1;pointer-events:auto}
+.md-btn-cancelar{background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:2px;cursor:pointer}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.alerta{background:var(--rojo);color:#fff;box-shadow:0 4px 16px rgba(255,61,90,0.5)}
 .toast.warn{background:var(--amarillo);color:#000;box-shadow:0 4px 16px rgba(245,200,0,0.4)}
@@ -493,12 +466,58 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
             <div class="tb-val" id="totalHoy">$0</div>
           </div>
         </div>
-        <div style="padding:10px 12px">
-          <button class="btn-nuevo-turno" onclick="confirmarNuevoTurno()">🔄 NUEVO TURNO</button>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">⛽ Gastos del día</div>
+        <div class="sa-form" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">ACPM</label><input class="gasto-input" id="gasto-acpm" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">Desayuno</label><input class="gasto-input" id="gasto-desayuno" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">Almuerzo</label><input class="gasto-input" id="gasto-almuerzo" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">Timbres</label><input class="gasto-input" id="gasto-timbres" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">Parqueo</label><input class="gasto-input" id="gasto-parqueo" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+            <div class="f-group"><label class="f-label" style="font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;display:block">Otros</label><input class="gasto-input" id="gasto-otros" type="number" placeholder="0" oninput="calcularLiquidacion()"></div>
+          </div>
+          <div class="total-box" style="border-color:rgba(255,61,90,0.25)">
+            <div><div class="tb-label">Total gastos</div></div>
+            <div class="tb-val" id="totalGastosHoy" style="color:var(--rojo)">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">💰 Liquidación neta — Reparto configurable</div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+          <div class="total-box" style="border-color:rgba(0,214,143,0.3)">
+            <div><div class="tb-label">Neto del día (recaudo − gastos)</div></div>
+            <div class="tb-val" id="netoHoy" style="color:var(--verde)">$0</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px">
+            <label style="font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;flex:1">% para propietario</label>
+            <input id="pctPropietario" type="number" min="0" max="100" value="100" style="width:60px;background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--amarillo);font-family:'JetBrains Mono',monospace;font-weight:700;text-align:center;padding:4px" oninput="calcularLiquidacion()">
+            <span style="color:var(--muted);font-size:0.8rem">%</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="total-box" style="margin:0">
+              <div><div class="tb-label">Propietario</div></div>
+              <div class="tb-val" id="repartoPropietario" style="color:var(--azul);font-size:1.3rem">$0</div>
+            </div>
+            <div class="total-box" style="margin:0">
+              <div><div class="tb-label">Conductor</div></div>
+              <div class="tb-val" id="repartoConductor" style="color:var(--amarillo);font-size:1.3rem">$0</div>
+            </div>
+          </div>
+          <div style="font-size:0.56rem;color:var(--muted);text-align:center;padding-top:2px">El porcentaje lo define cada propietario según su acuerdo — TUNIM solo calcula</div>
+        </div>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+          <button class="btn-nuevo-turno" onclick="confirmarNuevoTurno()">🔄 LIQUIDAR Y NUEVO TURNO</button>
+          <button onclick="enviarReportePorCorreo()" style="width:100%;padding:12px;background:var(--azul);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;color:#000">📧 ENVIAR REPORTE POR CORREO</button>
         </div>
       </div>
     </div>
   </div>
+
   <div class="report-content" id="rep-semana">
     <div style="padding-top:10px">
       <div class="admin-card">
@@ -570,6 +589,30 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   <button class="tab-btn" onclick="setTab('reportes',this)"><span class="tab-icon">📊</span>Reportes</button>
   <button class="tab-btn" onclick="setTab('tarifas',this)"><span class="tab-icon">🗺</span>Tarifas</button>
 </nav>
+
+<!-- MODAL DESHACER CON MOTIVO -->
+<div class="modal-deshacer" id="modalDeshacer">
+  <div class="md-box">
+    <div class="md-titulo">⚠ Eliminar registro</div>
+    <p style="font-size:0.7rem;color:var(--muted);margin-bottom:12px">Este registro quedará en la bitácora del propietario con el motivo indicado.</p>
+    <div class="md-reg">
+      <div class="md-reg-ruta" id="md-ruta">—</div>
+      <div class="md-reg-detalle" id="md-detalle">—</div>
+      <div class="md-reg-precio" id="md-precio">$0</div>
+    </div>
+    <label class="md-label">¿Por qué eliminas este registro?</label>
+    <div class="md-motivos">
+      <button class="md-motivo" onclick="seleccionarMotivo(this,'Error de ruta — toqué el botón equivocado')">🔀 Error de ruta — toqué el botón equivocado</button>
+      <button class="md-motivo" onclick="seleccionarMotivo(this,'Pasajero no abordó el vehículo')">🚶 Pasajero no abordó el vehículo</button>
+      <button class="md-motivo" onclick="seleccionarMotivo(this,'Registro duplicado')">📋 Registro duplicado</button>
+      <button class="md-motivo" onclick="seleccionarMotivo(this,'Otro motivo')">✏ Otro motivo</button>
+    </div>
+    <div class="md-btns">
+      <button class="md-btn-cancelar" onclick="cerrarModalDeshacer()">✕ CANCELAR</button>
+      <button class="md-btn-confirmar" id="md-btn-confirmar" onclick="confirmarDeshacer()">✓ ELIMINAR</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -759,13 +802,51 @@ function guardarEstado(){
 }
 
 // ══ LIQUIDACIÓN ══
+function obtenerGastosHoy(){
+  const campos=["acpm","desayuno","almuerzo","timbres","parqueo","otros"];
+  const gastos={};
+  let total=0;
+  campos.forEach(c=>{
+    const el=document.getElementById("gasto-"+c);
+    const v=el?(parseInt(el.value)||0):0;
+    gastos[c]=v;total+=v;
+  });
+  return {gastos,total};
+}
+
+function obtenerPctPropietario(){
+  const el=document.getElementById("pctPropietario");
+  let v=el?(parseInt(el.value)):100;
+  if(isNaN(v)||v<0)v=0;
+  if(v>100)v=100;
+  return v;
+}
+
+function calcularLiquidacion(){
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const {total:totalGastos}=obtenerGastosHoy();
+  const neto=Math.max(0,totalDin-totalGastos);
+  const pct=obtenerPctPropietario();
+  const propietario=Math.round(neto*(pct/100));
+  const conductor=neto-propietario;
+  document.getElementById("totalGastosHoy").textContent="$"+totalGastos.toLocaleString("es-CO");
+  document.getElementById("netoHoy").textContent="$"+neto.toLocaleString("es-CO");
+  document.getElementById("repartoPropietario").textContent="$"+propietario.toLocaleString("es-CO");
+  document.getElementById("repartoConductor").textContent="$"+conductor.toLocaleString("es-CO");
+}
+
 function liquidarDia(est){
   try{
     const totalPax=est.conteos.reduce((a,b)=>a+b,0);
     const totalDin=est.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
     if(totalPax===0)return;
+    const {gastos,total:totalGastos}=obtenerGastosHoy();
+    const pct=obtenerPctPropietario();
+    const neto=Math.max(0,totalDin-totalGastos);
+    const propietario=Math.round(neto*(pct/100));
+    const conductor=neto-propietario;
     const hist=cargarHistDias();
-    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,conteos:[...est.conteos]};
+    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,gastos,totalGastos,pctPropietario:pct,neto,propietario,conductor,conteos:[...est.conteos]};
     hist.unshift(resumen);
     localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,90)));
     guardarLiquidacionFirebase(resumen);
@@ -788,10 +869,12 @@ setInterval(verificarCambioDia,60000);
 
 // ══ VIAJES ══
 function setViaje(n){
+  const anterior=viajeActual;
   viajeActual=n;
   document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i+1===n));
   document.getElementById("viajeLabel").textContent="🚌 VIAJE "+n+" DE 3";
   actualizarUI();guardarEstado();
+  if(n>anterior) vozIniciarViaje(n);
 }
 
 // ══ TEMPORIZADOR ══
@@ -886,14 +969,148 @@ function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkit
 function beep(freq,dur,vol,delay=0){try{const ctx=getAudio(),osc=ctx.createOscillator(),gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);osc.frequency.value=freq;osc.type="sine";gain.gain.setValueAtTime(0,ctx.currentTime+delay);gain.gain.linearRampToValueAtTime(vol,ctx.currentTime+delay+0.01);gain.gain.linearRampToValueAtTime(0,ctx.currentTime+delay+dur);osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+dur+0.05);}catch(e){}}
 function sonarAlarma(t){switch(t){case"soft":beep(880,0.2,0.2);break;case"medium":beep(660,0.25,0.3);beep(880,0.25,0.3,0.3);break;case"urgent":beep(880,0.2,0.4);beep(880,0.2,0.4,0.25);beep(1100,0.3,0.5,0.5);break;case"alarm":for(let i=0;i<4;i++)beep(1200,0.15,0.6,i*0.22);break;}}
 
+// ══ SISTEMA DE VOZ — TUNIM ASISTENTE ══
+let vozLista=false;
+let vozSeleccionada=null;
+
+function inicializarVoz(){
+  if(!window.speechSynthesis)return;
+  const cargar=()=>{
+    const voces=window.speechSynthesis.getVoices();
+    // Buscar voz femenina en español latinoamericano
+    const preferidas=["Google Spanish","Microsoft Sabina","es-MX","es-CO","es-419","es-US","es-LA"];
+    for(const pref of preferidas){
+      const v=voces.find(x=>x.lang&&x.lang.includes(pref.includes("es-")?pref:"es")&&(pref.includes("es-")||x.name.includes(pref)));
+      if(v){vozSeleccionada=v;break;}
+    }
+    if(!vozSeleccionada){
+      vozSeleccionada=voces.find(x=>x.lang&&x.lang.startsWith("es"))||voces[0];
+    }
+    vozLista=true;
+  };
+  if(window.speechSynthesis.getVoices().length>0)cargar();
+  window.speechSynthesis.onvoiceschanged=cargar;
+}
+
+function hablar(texto, velocidad=0.9, tono=1.1){
+  if(!window.speechSynthesis||!vozLista)return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(texto);
+  if(vozSeleccionada)u.voice=vozSeleccionada;
+  u.lang="es-CO";
+  u.rate=velocidad;
+  u.pitch=tono;
+  u.volume=1;
+  window.speechSynthesis.speak(u);
+}
+
+// Mensajes motivadores para registro de pasajero
+const MENSAJES_PAGO=[
+  "Pago registrado",
+  "Pasajero registrado, ¡excelente!",
+  "Registro exitoso",
+  "Pago confirmado",
+  "Pasajero registrado correctamente",
+];
+let idxMensaje=0;
+
+function vozPagoRegistrado(){
+  const msg=MENSAJES_PAGO[idxMensaje%MENSAJES_PAGO.length];
+  idxMensaje++;
+  hablar(msg,1.0,1.15);
+}
+
+// Mensajes al cambiar de viaje
+const MENSAJES_VIAJE={
+  2:"¡Muy bien! Iniciando viaje dos. Sigue registrando tus pasajeros.",
+  3:"¡Excelente trabajo! Iniciando el viaje tres, el último del turno. ¡Tú puedes!",
+};
+
+function vozIniciarViaje(n){
+  if(MENSAJES_VIAJE[n]) setTimeout(()=>hablar(MENSAJES_VIAJE[n],0.9,1.1),400);
+}
+
+// Mensaje de cierre de turno
+function vozCierreTurno(){
+  const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const msg=`¡Excelente jornada! Hoy transportaste ${totalPax} pasajeros y recaudaste ${totalDin.toLocaleString("es-CO")} pesos. Recuerda registrar tus gastos y enviar el reporte del día. ¡Hasta mañana!`;
+  hablar(msg,0.88,1.1);
+}
+
+// Recordatorio de cierre a las 23:59 hora Colombia
+function verificarRecordatorioCierre(){
+  const ahora=new Date();
+  // Colombia siempre UTC-5
+  const utc=ahora.getTime()+ahora.getTimezoneOffset()*60000;
+  const colombia=new Date(utc-5*3600000);
+  const h=colombia.getHours(),m=colombia.getMinutes();
+  const key="tunim_recordatorio_"+diaKey();
+  if(h===23&&m===59&&!localStorage.getItem(key)){
+    localStorage.setItem(key,"1");
+    vozCierreTurno();
+    mostrarToast("🌙 Hora de cerrar el turno — envía el reporte","warn");
+    // Programar envío de reporte por correo
+    setTimeout(()=>enviarReportePorCorreo(),3000);
+  }
+}
+setInterval(verificarRecordatorioCierre,30000);
+
+// ══ HORA COLOMBIA — UTC-5 FIJA ══
+function horaColombiaActual(){
+  const ahora=new Date();
+  const utc=ahora.getTime()+ahora.getTimezoneOffset()*60000;
+  return new Date(utc-5*3600000);
+}
+
+function formatHoraCol(d){
+  return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+}
+
+function formatFechaCol(d){
+  const dias=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  const meses=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  return dias[d.getDay()]+" "+d.getDate()+" "+meses[d.getMonth()]+" "+d.getFullYear();
+}
+
+// ══ REPORTE POR CORREO ══
+function enviarReportePorCorreo(){
+  const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const {total:totalGastos}=obtenerGastosHoy();
+  const neto=Math.max(0,totalDin-totalGastos);
+  const hoy=formatFechaCol(horaColombiaActual());
+  const placa=configTurno.placa||"---";
+
+  let cuerpo=`TUNIM — Reporte diario\n`;
+  cuerpo+=`Fecha: ${hoy}\n`;
+  cuerpo+=`Vehículo: ${placa}\n`;
+  cuerpo+=`Conductor: ${configTurno.conductor||"---"}\n\n`;
+  cuerpo+=`RECAUDO:\n`;
+  RUTAS.forEach((r,i)=>{
+    if(estado.conteos[i]>0)cuerpo+=`  ${r.nombre}: ${estado.conteos[i]} pax = $${(estado.conteos[i]*r.precio).toLocaleString("es-CO")}\n`;
+  });
+  cuerpo+=`\nTOTAL PASAJEROS: ${totalPax}\n`;
+  cuerpo+=`TOTAL RECAUDADO: $${totalDin.toLocaleString("es-CO")}\n`;
+  cuerpo+=`TOTAL GASTOS: $${totalGastos.toLocaleString("es-CO")}\n`;
+  cuerpo+=`NETO DEL DÍA: $${neto.toLocaleString("es-CO")}\n\n`;
+  cuerpo+=`TUNIM © 2026 ACCESVIAL`;
+
+  const asunto=encodeURIComponent(`TUNIM Reporte ${hoy} — ${placa}`);
+  const body=encodeURIComponent(cuerpo);
+  const correo=encodeURIComponent("accesvialgerencia@gmail.com");
+  window.open(`mailto:${correo}?subject=${asunto}&body=${body}`,"_blank");
+  mostrarToast("📧 Abriendo correo con reporte...","");
+}
+
 // ══ REGISTRAR PASAJERO ══
 let confirmTimer=null;
 function registrar(idx){
   const ruta=RUTAS[idx];
-  const ahora=new Date();
+  const ahora=horaColombiaActual();
   const totalHoy=estado.historial.length+1;
   const reg={idx,nombre:ruta.nombre,precio:ruta.precio,viaje:viajeActual,
-    hora:ahora.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),num:totalHoy};
+    hora:formatHoraCol(ahora),num:totalHoy};
   estado.conteos[idx]++;
   estado.conteosViaje[viajeActual-1][idx]++;
   estado.historial.unshift(reg);
@@ -904,8 +1121,8 @@ function registrar(idx){
   setTimeout(()=>btn.classList.remove("flash-anim"),300);
   mostrarConfirmacion(ruta.nombre,ruta.precio,totalHoy);
   sonarAlarma("soft");
+  vozPagoRegistrado();
   actualizarUI();
-  // Guardar en Firebase
   guardarPasajeroFirebase(reg);
 }
 
@@ -918,13 +1135,71 @@ function mostrarConfirmacion(nombre,precio,num){
   confirmTimer=setTimeout(()=>ov.classList.remove("show"),700);
 }
 
+// ══ SISTEMA DE AUDITORÍA — DESHACER CON MOTIVO ══
+let motivoSeleccionado = null;
+
 function deshacerUltimo(){
   if(!estado.historial.length){mostrarToast("Sin registros que deshacer","alerta");return;}
   const last=estado.historial[0];
+  // Mostrar modal con info del registro
+  document.getElementById("md-ruta").textContent=last.nombre;
+  document.getElementById("md-detalle").textContent=last.hora+" · Viaje "+last.viaje+" · #"+String(last.num||"?").padStart(3,"0");
+  document.getElementById("md-precio").textContent="$"+last.precio.toLocaleString("es-CO");
+  // Limpiar selección anterior
+  motivoSeleccionado=null;
+  document.querySelectorAll(".md-motivo").forEach(b=>b.classList.remove("selected"));
+  document.getElementById("md-btn-confirmar").classList.remove("activo");
+  // Abrir modal
+  document.getElementById("modalDeshacer").classList.add("show");
+}
+
+function seleccionarMotivo(btn, motivo){
+  document.querySelectorAll(".md-motivo").forEach(b=>b.classList.remove("selected"));
+  btn.classList.add("selected");
+  motivoSeleccionado=motivo;
+  document.getElementById("md-btn-confirmar").classList.add("activo");
+}
+
+function cerrarModalDeshacer(){
+  document.getElementById("modalDeshacer").classList.remove("show");
+  motivoSeleccionado=null;
+}
+
+async function confirmarDeshacer(){
+  if(!motivoSeleccionado) return;
+  const last=estado.historial[0];
+  const ahora=new Date();
+  // Crear registro de auditoría
+  const auditoria={
+    tipo:"deshacer",
+    registroEliminado:{...last},
+    motivo:motivoSeleccionado,
+    hora:ahora.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit",second:"2-digit"}),
+    fecha:diaKey(),
+    placa:configTurno.placa||"—",
+    viaje:viajeActual
+  };
+  // Guardar auditoría localmente
+  try{
+    const audLocal=JSON.parse(localStorage.getItem("tunim_auditoria_v1")||"[]");
+    audLocal.unshift(auditoria);
+    localStorage.setItem("tunim_auditoria_v1",JSON.stringify(audLocal.slice(0,200)));
+  }catch(e){}
+  // Guardar auditoría en Firebase
+  if(fbListo&&window._fb&&configTurno.placa){
+    try{
+      const {db,collection,addDoc,serverTimestamp}=window._fb;
+      await addDoc(collection(db,"auditoria"),{...auditoria,guardadoEn:serverTimestamp()});
+    }catch(e){console.warn("Error guardando auditoría Firebase:",e);}
+  }
+  // Eliminar el registro
   estado.conteos[last.idx]=Math.max(0,estado.conteos[last.idx]-1);
   estado.conteosViaje[last.viaje-1][last.idx]=Math.max(0,estado.conteosViaje[last.viaje-1][last.idx]-1);
   estado.historial.shift();
-  guardarEstado();actualizarUI();mostrarToast("↩ Último registro eliminado","warn");
+  guardarEstado();
+  cerrarModalDeshacer();
+  actualizarUI();
+  mostrarToast("↩ Registro eliminado — motivo guardado","warn");
 }
 
 // ══ RENDER DESTINOS ══
@@ -979,7 +1254,7 @@ function actualizarUI(){
   document.getElementById("tablaHoy").innerHTML=filasHoy;
   document.getElementById("totalHoy").textContent="$"+totalDin.toLocaleString("es-CO");
   document.getElementById("paxHoy").textContent=totalPax+" pasajeros";
-  renderReporteSemana();renderReporteMes();renderHistorialDias();
+  renderReporteSemana();renderReporteMes();renderHistorialDias();calcularLiquidacion();
 }
 
 function renderReporteSemana(){
@@ -1039,6 +1314,9 @@ function confirmarNuevoTurno(){
   if(confirm("¿Iniciar nuevo turno? El día actual se guardará en el historial.")){
     liquidarDia(estado);estado=estadoDefault();viajeActual=1;
     guardarEstado();resetTimer();
+    ["acpm","desayuno","almuerzo","timbres","parqueo","otros"].forEach(c=>{
+      const el=document.getElementById("gasto-"+c);if(el)el.value="";
+    });
     document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i===0));
     document.getElementById("viajeLabel").textContent="🚌 VIAJE 1 DE 3";
     actualizarUI();mostrarToast("🔄 Nuevo turno iniciado","");
@@ -1059,9 +1337,11 @@ function setReporte(name,btn){
 }
 
 function actualizarReloj(){
-  const n=new Date();
-  document.getElementById("horaActual").textContent=n.toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
-  document.getElementById("fechaActual").textContent=n.toLocaleDateString("es-CO",{weekday:"short",day:"numeric",month:"short"}).toUpperCase();
+  const n=horaColombiaActual();
+  document.getElementById("horaActual").textContent=String(n.getHours()).padStart(2,"0")+":"+String(n.getMinutes()).padStart(2,"0");
+  const dias=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  const meses=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  document.getElementById("fechaActual").textContent=(dias[n.getDay()]+" "+n.getDate()+" "+meses[n.getMonth()]).toUpperCase();
 }
 setInterval(actualizarReloj,1000);actualizarReloj();
 
@@ -1086,6 +1366,15 @@ function renderTarifasAdmin(){
 
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
+inicializarVoz();
+// Saludo inicial motivador al abrir la app
+setTimeout(()=>{
+  const hora=horaColombiaActual().getHours();
+  let saludo="Buenos días";
+  if(hora>=12&&hora<18)saludo="Buenas tardes";
+  else if(hora>=18)saludo="Buenas noches";
+  hablar(`${saludo}. Bienvenido a TUNIM. ¡Que tengas una excelente jornada!`,0.9,1.1);
+},1500);
 </script>
 </body>
 </html>
