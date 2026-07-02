@@ -1496,46 +1496,42 @@ async function procesarLoginExpress() {
         if (errorDiv) { errorDiv.innerText = error.message; errorDiv.style.display = 'block'; }
         btnIngresar.disabled = false;
         btnIngresar.innerText = "INGRESAR AL CARRO";
-    }
-}
-
-    
-  }
+ }
+};
 });
-
-  // 🔄 INYECTOR AUTOMÁTICO DE TARIFAS DESDE EL ARRAY 'RUTAS'
+// 🔄 INYECTOR AUTOMÁTICO DE TARIFAS DESDE EL ARRAY 'RUTAS'
 window.addEventListener("fbReady", async () => {
   const { db, collection, getDocs, doc, setDoc } = window._fb;
   
   try {
-    // Verificamos si ya existen tarifas en Firebase
     const querySnapshot = await getDocs(collection(db, "tarifas"));
     
     if (querySnapshot.empty) {
       console.log("Tarifas vacías en Firebase. Sincronizando matriz estática...");
-      
-      // Recorremos tu array 'RUTAS' y lo subimos uno a uno
-      for (const ruta of RUTAS) {
-        // Usamos el nombre de la ruta como ID único en Firebase
-        await setDoc(doc(db, "tarifas", ruta.nombre), {
-          nombre: ruta.nombre,
-          desde: ruta.desde,
-          hasta: ruta.hasta,
-          valor: ruta.precio,
-          actualizado: new Date().toISOString()
-        });
-      }
-      
-      console.log("¡Todas las tarifas se han guardado en Firebase con éxito!");
-      // Forzamos un refresco rápido para activar las funciones de voz y verde
-      location.reload(); 
-    } else {
-      console.log("Las tarifas ya existen en Firebase. Todo listo.");
+     for (const ruta of RUTAS) {
+      await setDoc(doc(db, "tarifas", ruta.nombre), {
+        nombre: ruta.nombre,
+        desde: ruta.desde,
+        hasta: ruta.hasta,
+        valor: ruta.precio,
+        actualizado: new Date().toISOString()
+      });
     }
-  } catch (error) {
-    console.error("Error al sincronizar tarifas iniciales:", error);
+
+    console.log("¡Todas las tarifas se han guardado en Firebase con éxito!");
+    location.reload(); 
+  } else {
+    console.log("Las tarifas ya existen en Firebase. Todo listo.");
   }
+} catch (error) {
+  console.error("Error al sincronizar tarifas iniciales:", error);
+}
 });
 </script>
 </body>
-</html>
+</html> 
+   
+
+
+ 
+
