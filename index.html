@@ -1508,7 +1508,7 @@ window.addEventListener("fbReady", async () => {
     
     if (querySnapshot.empty) {
       console.log("Tarifas vacías en Firebase. Sincronizando matriz estática...");
-     for (const ruta of RUTAS) {
+for (const ruta of RUTAS) {
       await setDoc(doc(db, "tarifas", ruta.nombre), {
         nombre: ruta.nombre,
         desde: ruta.desde,
@@ -1517,7 +1517,7 @@ window.addEventListener("fbReady", async () => {
         actualizado: new Date().toISOString()
       });
     }
-
+    
     console.log("¡Todas las tarifas se han guardado en Firebase con éxito!");
     location.reload(); 
   } else {
@@ -1529,9 +1529,6 @@ window.addEventListener("fbReady", async () => {
 });
 </script>
 </body>
-</html> 
-   
-
-
+</html>    
  
 
