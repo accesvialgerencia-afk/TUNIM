@@ -1498,6 +1498,25 @@ async function procesarLoginExpress() {
         btnIngresar.innerText = "INGRESAR AL CARRO";
     }
 }
+// 🚀 SCRIPT TEMPORAL PARA REGISTRAR EL BUS 866 (Borrar luego)
+window.addEventListener("fbReady", async () => {
+  const { db, doc, setDoc } = window._fb;
+  try {
+    await setDoc(doc(db, "vehiculos", "866"), {
+      orden: 866,
+      placa: "TAL-866",
+      estadoPago: "Al Día",
+      propietario: {
+        nombre: "Juan Carlos Pérez",
+        cedula: "10203040"
+      },
+      fechaRegistro: new Date().toISOString()
+    });
+    console.log("¡Vehículo 866 registrado con éxito en Firebase!");
+  } catch (error) {
+    console.error("Error registrando vehículo:", error);
+  }
+});
 </script>
 </body>
 </html>
