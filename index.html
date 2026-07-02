@@ -70,10 +70,28 @@
     window._fbReady = true; // continuar en modo local si falla
     window.dispatchEvent(new Event("fbReady"));
   });
+<!-- ══ PANTALLA DE LOGIN EXPRESS TÚNIM ══ -->
+<div id="login-screen" class="login-overlay">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-logo">TÚ<span>NIM</span></div>
+      <sub>CONTROL DE FLOTA | ACCESVIAL</sub>
+    </div>
+    
+    <div class="login-form">
+      <label class="login-label">Número de Orden del Bus</label>
+      <input type="number" id="input-orden" class="login-input" placeholder="Ej. 866" inputmode="numeric" pattern="[0-9]*">
+      
+      <div id="login-error" class="login-error-msg" style="display: none;"></div>
+      
+      <button id="btn-ingresar" class="login-btn" onclick="procesarLoginExpress()">INGRESAR AL CARRO</button>
+    </div>
+  </div>
+</div>
 </script>
 
 <style>
-:root{
+
   --bg:#080C10;--surface:#0E1419;--surface2:#151C24;
   --border:#1E2A35;--border2:#243040;
   --text:#E8EDF2;--muted:#4A5A6A;--muted2:#6A7A8A;
