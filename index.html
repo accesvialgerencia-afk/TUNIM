@@ -1407,17 +1407,79 @@ function renderTarifasAdmin(){
   document.getElementById("tarifasTabla").innerHTML=RUTAS.map(r=>`<tr><td>${r.nombre}</td><td class="money" style="color:var(--amarillo)">$${r.precio.toLocaleString("es-CO")}</td></tr>`).join("");
 }
 
-// ══ INIT ══
-renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
-inicializarVoz();
-// Saludo inicial motivador al abrir la app
-setTimeout(()=>{
-  const hora=horaColombiaActual().getHours();
-  let saludo="Buenos días";
-  if(hora>=12&&hora<18)saludo="Buenas tardes";
-  else if(hora>=18)saludo="Buenas noches";
-  hablar(`${saludo}. Bienvenido a TUNIM. ¡Que tengas una excelente jornada!`,0.9,1.1);
-},1500);
+// == INIT ==
+// En vez de iniciar directo, dejamos todo listo pero esperando el Login
+function inicializarAppDespuesDeLogin() {
+    renderDestinos();
+    renderTarifasAdmin();
+    actualizarUI();
+    setViaje(viajeActual);
+    actualizarBarraVehiculo();
+    inicializarVoz();
+
+    // Saludo inicial motivador al entrar
+    setTimeout(() => {
+        const hora = horaColombiaActual().getHours();
+        let saludo = "Buenos días";
+        if (hora >= 12 && hora < 18) saludo = "Buenas tardes";
+        else if (hora >= 18) saludo = "Buenas noches";
+        hablar(`${saludo}. Bienvenido a TUNIM. ¡Que tengas una excelente jornada!`, 0, 9, 1.1);
+    }, 1500);
+}
+
+// ══ LOGICA DE LOGIN EXPRESS TÚNIM ══
+async function procesarLoginExpress() {
+    const inputOrden = document.getElementById('input-orden').value.trim();
+    const errorDiv = document.getElementById('login-error');
+    const btnIngresar = document.getElementById('btn-ingresar');
+
+    if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.innerText = ''; }
+
+    if (!inputOrden) {
+        if (errorDiv) { errorDiv.innerText = "Por favor, ingrese el número de orden."; errorDiv.style.display = 'block'; }
+        return;
+    }
+
+    btnIngresar.disabled = true;
+    btnIngresar.innerText = "VERIFICANDO ESTADO...";
+
+    try {
+        if (!window._fbReady || !window._fb) {
+            throw new Error("Conectando con Firebase... Espera 3 segundos e intenta de nuevo.");
+        }
+
+        const { db, doc, getDoc } = window._fb;
+        const vehiculoRef = doc(db, "vehiculos", inputOrden);
+        const vehiculoSnap = await getDoc(vehiculoRef);
+
+        if (!vehiculoSnap.exists()) {
+            throw new Error(`El vehículo ${inputOrden} no está registrado en TÚNIM.`);
+        }
+
+        const datosVehiculo = vehiculoSnap.data();
+
+        if (datosVehiculo.estado_suscripcion !== 'activo') {
+            throw new Error(`SERVICIO SUSPENDIDO. El propietario (${datosVehiculo.propietario?.nombre || 'N/A'}) debe ponerse al día.`);
+        }
+
+        // Guardamos los datos del bus autorizado
+        window.TUNIM_VEHICULO = {
+            orden: datosVehiculo.numero_orden,
+            placa: datosVehiculo.placa,
+            empresa: datosVehiculo.empresa,
+            propietarioEmail: datosVehiculo.propietario?.email
+        };
+
+        // Ocultamos el login y arrancamos la app real
+        document.getElementById('login-screen').style.display = 'none';
+        inicializarAppDespuesDeLogin();
+
+    } catch (error) {
+        if (errorDiv) { errorDiv.innerText = error.message; errorDiv.style.display = 'block'; }
+        btnIngresar.disabled = false;
+        btnIngresar.innerText = "INGRESAR AL CARRO";
+    }
+}
 </script>
 </body>
 </html>
