@@ -1499,32 +1499,7 @@ async function procesarLoginExpress() {
  }
 };
 });
-// 🔄 INYECTOR AUTOMÁTICO DE TARIFAS DESDE EL ARRAY 'RUTAS'
-window.addEventListener("fbReady", async () => {
-  const { db, collection, getDocs, doc, setDoc } = window._fb;
-  
-  try {
-    const querySnapshot = await getDocs(collection(db, "tarifas"));
-    
-    if (querySnapshot.empty) {
-      console.log("Tarifas vacías en Firebase. Sincronizando matriz estática...");
-for (const ruta of RUTAS) {
-      await setDoc(doc(db, "tarifas", ruta.nombre), {
-        nombre: ruta.nombre,
-        desde: ruta.desde,
-        hasta: ruta.hasta,
-        valor: ruta.precio,
-        actualizado: new Date().toISOString()
-      });
-    }
-    
-    console.log("¡Todas las tarifas se han guardado en Firebase con éxito!");
-    location.reload(); 
-  } else {
-    console.log("Las tarifas ya existen en Firebase. Todo listo.");
-  }
-} catch (error) {
-  console.error("Error al sincronizar tarifas iniciales:", error);
+
 }
 });
 </script>
