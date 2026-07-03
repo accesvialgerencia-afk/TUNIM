@@ -70,28 +70,10 @@
     window._fbReady = true; // continuar en modo local si falla
     window.dispatchEvent(new Event("fbReady"));
   });
-// ══ PANTALLA DE LOGIN EXPRESS TÚNIM ══
-<div id="login-screen" class="login-overlay">
-  <div class="login-box">
-    <div class="login-header">
-      <div class="login-logo">TÚ<span>NIM</span></div>
-      <sub>CONTROL DE FLOTA | ACCESVIAL</sub>
-    </div>
-    
-    <div class="login-form">
-      <label class="login-label">Número de Orden del Bus</label>
-      <input type="number" id="input-orden" class="login-input" placeholder="Ej. 866" inputmode="numeric" pattern="[0-9]*">
-      
-      <div id="login-error" class="login-error-msg" style="display: none;"></div>
-      
-      <button id="btn-ingresar" class="login-btn" onclick="procesarLoginExpress()">INGRESAR AL CARRO</button>
-    </div>
-  </div>
-</div>
 </script>
 
 <style>
-
+:root{
   --bg:#080C10;--surface:#0E1419;--surface2:#151C24;
   --border:#1E2A35;--border2:#243040;
   --text:#E8EDF2;--muted:#4A5A6A;--muted2:#6A7A8A;
@@ -1031,7 +1013,7 @@ function hablar(texto, velocidad=0.9, tono=1.1){
 // Mensajes motivadores para registro de pasajero
 const MENSAJES_PAGO=[
   "Pago registrado",
-  "Pasajero registrado",
+  "Pasajero registrado, ¡excelente!",
   "Registro exitoso",
   "Pago confirmado",
   "Pasajero registrado correctamente",
@@ -1147,7 +1129,7 @@ function enviarReportePorCorreo(){
   mostrarToast("📧 Enviando reporte...","");
 
   // Enviar con EmailJS
-    emailjs.send('service_mext8fi', "template_5dk2xxk",{
+  emailjs.send("service_7k8ve4a","template_5dk2xxk",{
     fecha: hoy,
     placa: placa,
     reporte: reporte
@@ -1425,85 +1407,17 @@ function renderTarifasAdmin(){
   document.getElementById("tarifasTabla").innerHTML=RUTAS.map(r=>`<tr><td>${r.nombre}</td><td class="money" style="color:var(--amarillo)">$${r.precio.toLocaleString("es-CO")}</td></tr>`).join("");
 }
 
-// == INIT ==
-// En vez de iniciar directo, dejamos todo listo pero esperando el Login
-function inicializarAppDespuesDeLogin() {
-    renderDestinos();
-    renderTarifasAdmin();
-    actualizarUI();
-    setViaje(viajeActual);
-    actualizarBarraVehiculo();
-    inicializarVoz();
-
-    // Saludo inicial motivador al entrar
-    setTimeout(() => {
-        const hora = horaColombiaActual().getHours();
-        let saludo = "Buenos días";
-        if (hora >= 12 && hora < 18) saludo = "Buenas tardes";
-        else if (hora >= 18) saludo = "Buenas noches";
-        hablar(`${saludo}. Bienvenido a TUNIM. ¡Que tengas una excelente jornada!`, 0, 9, 1.1);
-    }, 1500);
-}
-
-// ══ LOGICA DE LOGIN EXPRESS TÚNIM ══
-async function procesarLoginExpress() {
-    const inputOrden = document.getElementById('input-orden').value.trim();
-    const errorDiv = document.getElementById('login-error');
-    const btnIngresar = document.getElementById('btn-ingresar');
-
-    if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.innerText = ''; }
-
-    if (!inputOrden) {
-        if (errorDiv) { errorDiv.innerText = "Por favor, ingrese el número de orden."; errorDiv.style.display = 'block'; }
-        return;
-    }
-
-    btnIngresar.disabled = true;
-    btnIngresar.innerText = "VERIFICANDO ESTADO...";
-
-    try {
-        if (!window._fbReady || !window._fb) {
-            throw new Error("Conectando con Firebase... Espera 3 segundos e intenta de nuevo.");
-        }
-
-        const { db, doc, getDoc } = window._fb;
-        const vehiculoRef = doc(db, "vehiculos", inputOrden);
-        const vehiculoSnap = await getDoc(vehiculoRef);
-
-        if (!vehiculoSnap.exists()) {
-            throw new Error(`El vehículo ${inputOrden} no está registrado en TÚNIM.`);
-        }
-
-        const datosVehiculo = vehiculoSnap.data();
-
-        if (datosVehiculo.estado_suscripcion !== 'activo') {
-            throw new Error(`SERVICIO SUSPENDIDO. El propietario (${datosVehiculo.propietario?.nombre || 'N/A'}) debe ponerse al día.`);
-        }
-
-        // Guardamos los datos del bus autorizado
-        window.TUNIM_VEHICULO = {
-            orden: datosVehiculo.numero_orden,
-            placa: datosVehiculo.placa,
-            empresa: datosVehiculo.empresa,
-            propietarioEmail: datosVehiculo.propietario?.email
-        };
-
-        // Ocultamos el login y arrancamos la app real
-        document.getElementById('login-screen').style.display = 'none';
-        inicializarAppDespuesDeLogin();
-
-    } catch (error) {
-        if (errorDiv) { errorDiv.innerText = error.message; errorDiv.style.display = 'block'; }
-        btnIngresar.disabled = false;
-        btnIngresar.innerText = "INGRESAR AL CARRO";
- }
-};
-});
-
-}
-});
+// ══ INIT ══
+renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
+inicializarVoz();
+// Saludo inicial motivador al abrir la app
+setTimeout(()=>{
+  const hora=horaColombiaActual().getHours();
+  let saludo="Buenos días";
+  if(hora>=12&&hora<18)saludo="Buenas tardes";
+  else if(hora>=18)saludo="Buenas noches";
+  hablar(`${saludo}. Bienvenido a TUNIM. ¡Que tengas una excelente jornada!`,0.9,1.1);
+},1500);
 </script>
 </body>
-</html>    
- 
-
+</html>
