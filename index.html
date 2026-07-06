@@ -22,6 +22,10 @@
 <title>TUNIM — Control de Recaudo | ACCESVIAL 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 
+<!-- ══ EMAILJS SDK ══ -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>emailjs.init("CF4qcrUm2UKLzWy8");</script>
+
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
@@ -336,6 +340,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <div class="vbar-inicio">Hora: <span id="vbarHora">—</span></div>
   </div>
   <button class="vbar-edit" onclick="editarConfig()">✏ Editar</button>
+  <button id="btnGPS" class="vbar-edit" onclick="toggleGPS()" style="background:rgba(0,214,143,0.1);border-color:rgba(0,214,143,0.3);color:var(--verde)">📍 GPS</button>
 </div>
 
 <!-- VIAJE ACTUAL -->
@@ -639,6 +644,300 @@ const META_MIN=28, MULTA1=10000, MULTAN=5000;
 const STORAGE_KEY="tunim_v3";
 const HIST_KEY="tunim_hist_v3";
 const CONFIG_KEY="tunim_config_v1";
+
+// ══ GEOCERCAS DEL CORREDOR — ACCESVIAL 2026 ══
+// Coordenadas validadas en ruta real por ACCESVIAL
+const GEOCERCAS = [
+  {
+    codigo: "G1", nombre: "Bosa Tama / Ciudad Verde",
+    lat: 4.615282, lng: -74.213917, radio: 300,
+    tarifa: 0, // punto de origen
+    descripcion: "Inicio de ruta desde Soacha",
+    esOrigen: true
+  },
+  {
+    codigo: "G2", nombre: "Bosa Estación",
+    lat: 4.595778, lng: -74.182926, radio: 350,
+    tarifa: 2300,
+    descripcion: "Límite tarifa $2.300 — bidireccional",
+    tarifas: [2300]
+  },
+  {
+    codigo: "G3", nombre: "Av. Villavicencio / 1a de Mayo",
+    lat: 4.617851, lng: -74.163855, radio: 350,
+    tarifa: 3300,
+    descripcion: "Límite tarifa $3.300 — bidireccional",
+    tarifas: [3300]
+  },
+  {
+    codigo: "G4", nombre: "Río Bogotá / Puente Calle 13",
+    lat: 4.696481, lng: -74.174446, radio: 500,
+    tarifa: 3700,
+    descripcion: "PUNTO CRÍTICO — frontera urbano/intermunicipal. $3.700 sin importar dónde se baje en Bogotá o Soacha",
+    tarifas: [3700],
+    esFrontera: true
+  },
+  {
+    codigo: "G5", nombre: "Peaje Calle 13",
+    lat: 4.699025, lng: -74.181510, radio: 300,
+    tarifa: null,
+    descripcion: "Punto de validación — si cruza este punto debe haber pagado $7.000 o $8.000",
+    tarifas: [7000, 8000],
+    esValidacion: true
+  },
+  {
+    codigo: "G6", nombre: "Paradero INPEC — Funza/Mosquera",
+    lat: 4.734942, lng: -74.183975, radio: 350,
+    tarifa: null,
+    descripcion: "Destino final $7.000 (desde Bogotá) y $8.000 (desde Soacha)",
+    tarifas: [7000, 8000],
+    esDestino: true
+  },
+  {
+    codigo: "G7", nombre: "Fontibón — Calle 13 / Cali",
+    lat: 4.660867, lng: -74.137253, radio: 400,
+    tarifa: 6200,
+    descripcion: "Origen/destino $6.200 — Fontibón ↔ Funza/Mosquera",
+    tarifas: [6200]
+  },
+  {
+    codigo: "G8", nombre: "Planadas / Portal Dorado",
+    lat: 4.615282, lng: -74.213917, radio: 400, // pendiente coordenada real
+    tarifa: 3400,
+    descripcion: "Tarifa única $3.400 — ruta especial Planadas ↔ Portal Dorado",
+    tarifas: [3400],
+    esRutaEspecial: true
+  }
+];
+
+// Pendientes de confirmar:
+// G8 Planadas → coordenada real (usada G1 temporalmente)
+// G_3000 → $3.000 Río Bogotá en adelante → Funza/Mosquera (pendiente coordenada)
+
+// ══ MOTOR DE GEOCERCAS ══
+let gpsActivo = false;
+let watchId = null;
+let posicionActual = null;
+let geocercasActivas = new Set();
+let pasajerosABordo = []; // lista de pasajeros con tarifa y geocerca destino
+
+// Calcular distancia entre dos puntos GPS (en metros)
+function calcularDistancia(lat1, lng1, lat2, lng2){
+  const R = 6371000; // Radio tierra en metros
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+    Math.sin(dLng/2)*Math.sin(dLng/2);
+  const c = 2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  return R*c;
+}
+
+// Verificar si una posición está dentro de una geocerca
+function estaDentroDeGeocerca(lat, lng, geocerca){
+  const dist = calcularDistancia(lat, lng, geocerca.lat, geocerca.lng);
+  return dist <= geocerca.radio;
+}
+
+// Iniciar GPS
+function iniciarGPS(){
+  if(!navigator.geolocation){
+    mostrarToast("GPS no disponible en este dispositivo","alerta");
+    return;
+  }
+  mostrarToast("📍 GPS activado — monitoreando ruta","");
+  gpsActivo = true;
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      posicionActual = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        precision: pos.coords.accuracy
+      };
+      verificarGeocercas(posicionActual);
+    },
+    (err) => {
+      console.warn("GPS error:", err);
+      setSyncStatus("offline");
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 10000
+    }
+  );
+}
+
+// Detener GPS
+function detenerGPS(){
+  if(watchId !== null){
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    gpsActivo = false;
+    mostrarToast("📍 GPS desactivado","warn");
+  }
+}
+
+// Verificar en qué geocercas está el bus
+function verificarGeocercas(pos){
+  GEOCERCAS.forEach(geo => {
+    const dist = calcularDistancia(pos.lat, pos.lng, geo.lat, geo.lng);
+    const dentroAhora = dist <= geo.radio;
+    const estabaAntes = geocercasActivas.has(geo.codigo);
+
+    // Entró a una geocerca
+    if(dentroAhora && !estabaAntes){
+      geocercasActivas.add(geo.codigo);
+      alEntrarGeocerca(geo, dist);
+    }
+
+    // Se acerca a 200 metros de una geocerca
+    if(!dentroAhora && dist <= geo.radio + 200){
+      alertaProximaGeocerca(geo, dist);
+    }
+
+    // Salió de una geocerca
+    if(!dentroAhora && estabaAntes){
+      geocercasActivas.delete(geo.codigo);
+    }
+  });
+}
+
+// Acciones al entrar a una geocerca
+function alEntrarGeocerca(geo, dist){
+  console.log("Entrando a geocerca:", geo.codigo, geo.nombre);
+
+  // Anuncio de voz
+  if(geo.esOrigen){
+    hablar("Inicio de ruta registrado. " + geo.nombre, 0.9, 1.1);
+  } else if(geo.esFrontera){
+    hablar("Punto frontera: " + geo.nombre + ". Tarifa tres mil setecientos pesos.", 0.9, 1.1);
+    verificarPasajerosEnFrontera(geo);
+  } else if(geo.esValidacion){
+    hablar("Peaje Calle trece. Pasajeros deben haber pagado siete mil o ocho mil pesos.", 0.9, 1.1);
+    verificarPasajerosValidacion(geo);
+  } else if(geo.esDestino){
+    hablar("Paradero INPEC. Destino final. Pasajeros de siete mil y ocho mil pesos, fin de su trayecto. Gracias por viajar con nosotros.", 0.9, 1.1);
+    notificarDescensoMasivo(geo);
+  } else if(geo.esRutaEspecial){
+    hablar("Zona Planadas. Tarifa única tres mil cuatrocientos pesos.", 0.9, 1.1);
+  } else {
+    const tarifaVoz = geo.tarifa ? geo.tarifa.toLocaleString("es-CO") : "";
+    if(tarifaVoz){
+      hablar(geo.nombre + ". Fin del trayecto para pasajeros de " + tarifaVoz + " pesos.", 0.9, 1.1);
+    }
+    notificarDescenso(geo);
+  }
+
+  // Toast visual
+  mostrarToast("📍 " + geo.nombre + " — " + geo.codigo, "");
+
+  // Guardar en Firebase
+  guardarEventoGeocercaFirebase(geo, dist);
+}
+
+// Alerta cuando se acerca (200m antes)
+let alertasProximidad = new Set();
+function alertaProximaGeocerca(geo, dist){
+  const key = geo.codigo + "_prox";
+  if(!alertasProximidad.has(key) && dist <= geo.radio + 200){
+    alertasProximidad.add(key);
+    const pasajerosAfectados = pasajerosABordo.filter(p =>
+      geo.tarifas && geo.tarifas.includes(p.precio)
+    ).length;
+    if(pasajerosAfectados > 0){
+      setTimeout(()=>{
+        hablar("Próxima parada: " + geo.nombre + ". " + pasajerosAfectados + " pasajeros deben descender.", 0.9, 1.1);
+      }, 0);
+    }
+    setTimeout(()=> alertasProximidad.delete(key), 60000);
+  }
+}
+
+// Verificar pasajeros en punto frontera
+function verificarPasajerosEnFrontera(geo){
+  const pasajerosMenores = pasajerosABordo.filter(p => p.precio < 3700);
+  if(pasajerosMenores.length > 0){
+    setTimeout(()=>{
+      hablar("Alerta: " + pasajerosMenores.length + " pasajeros con tarifa menor al trayecto actual. Verificar pago.", 0.9, 1.0);
+    }, 2000);
+    mostrarToast("⚠ " + pasajerosMenores.length + " pax con tarifa baja en frontera","alerta");
+  }
+}
+
+// Verificar pasajeros en peaje
+function verificarPasajerosValidacion(geo){
+  const pasajerosInvalidos = pasajerosABordo.filter(p =>
+    p.precio !== 7000 && p.precio !== 8000 && p.precio !== 6200 && p.precio !== 3000
+  );
+  if(pasajerosInvalidos.length > 0){
+    setTimeout(()=>{
+      hablar("Alerta de recaudo: " + pasajerosInvalidos.length + " pasajeros con tarifa incorrecta para este tramo.", 0.9, 1.0);
+    }, 2000);
+    mostrarToast("⚠ " + pasajerosInvalidos.length + " pax con tarifa incorrecta","alerta");
+  }
+}
+
+// Notificar descenso de pasajeros en geocerca
+function notificarDescenso(geo){
+  const afectados = pasajerosABordo.filter(p =>
+    geo.tarifas && geo.tarifas.includes(p.precio)
+  );
+  if(afectados.length > 0){
+    mostrarToast("🚶 " + afectados.length + " pasajero(s) deben descender","warn");
+    // Marcar como descendidos
+    pasajerosABordo = pasajerosABordo.filter(p =>
+      !geo.tarifas || !geo.tarifas.includes(p.precio)
+    );
+  }
+}
+
+function notificarDescensoMasivo(geo){
+  if(pasajerosABordo.length > 0){
+    mostrarToast("🚶 Destino final — " + pasajerosABordo.length + " pasajero(s) descienden","warn");
+    pasajerosABordo = [];
+  }
+}
+
+// Guardar evento de geocerca en Firebase
+async function guardarEventoGeocercaFirebase(geo, dist){
+  if(!fbListo||!window._fb||!configTurno.placa) return;
+  try{
+    const {db,collection,addDoc,serverTimestamp}=window._fb;
+    await addDoc(collection(db,"geocerca_eventos"),{
+      placa: configTurno.placa,
+      geocerca: geo.codigo,
+      nombre: geo.nombre,
+      lat: posicionActual?.lat,
+      lng: posicionActual?.lng,
+      distancia: Math.round(dist),
+      fecha: diaKey(),
+      hora: formatHoraCol(horaColombiaActual()),
+      registradoEn: serverTimestamp()
+    });
+  }catch(e){ console.warn("Error guardando geocerca Firebase:", e); }
+}
+
+// Obtener tarifa sugerida según posición actual
+function tarifaSugeridaPorGPS(){
+  if(!posicionActual) return null;
+  let geocercaActual = null;
+  let distanciaMinima = Infinity;
+
+  GEOCERCAS.forEach(geo => {
+    const dist = calcularDistancia(
+      posicionActual.lat, posicionActual.lng,
+      geo.lat, geo.lng
+    );
+    if(dist < distanciaMinima){
+      distanciaMinima = dist;
+      geocercaActual = geo;
+    }
+  });
+  return geocercaActual;
+}
+
 
 // ══ CONFIG TURNO (placa + fecha + hora) ══
 let configTurno = cargarConfig();
@@ -964,68 +1263,10 @@ function renderAlertas(){
 }
 
 // ══ SONIDO ══
-// ══ AUDIO — Modo Waze: no bloquea Spotify/YouTube ══
-// Usa volumen bajo y tipo de onda suave para coexistir con otras apps
 let audioCtx=null;
-
-function getAudio(){
-  if(!audioCtx){
-    try{
-      audioCtx=new(window.AudioContext||window.webkitAudioContext)({latencyHint:"interactive"});
-    }catch(e){return null;}
-  }
-  // Reanudar contexto si fue suspendido por el navegador
-  if(audioCtx.state==="suspended") audioCtx.resume();
-  return audioCtx;
-}
-
-function tono(freq,dur,vol=0.08,delay=0,tipo="sine"){
-  // Vol máximo 0.12 — suficiente para escuchar sin interrumpir música
-  try{
-    const ctx=getAudio();
-    if(!ctx)return;
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value=freq;
-    osc.type=tipo;
-    const t=ctx.currentTime+delay;
-    gain.gain.setValueAtTime(0,t);
-    gain.gain.linearRampToValueAtTime(vol,t+0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001,t+dur);
-    osc.start(t);
-    osc.stop(t+dur+0.05);
-  }catch(e){}
-}
-
-function sonarAlarma(tipo){
-  switch(tipo){
-    // Registro de pasajero — ding suave discreto
-    case"soft":
-      tono(1047,0.12,0.08);        // Do5 suave
-      tono(1319,0.1,0.06,0.12);    // Mi5 suave
-      break;
-    // Alerta media — dos tonos
-    case"medium":
-      tono(880,0.15,0.09);
-      tono(1047,0.15,0.09,0.18);
-      break;
-    // Alerta urgente — tres tonos ascendentes
-    case"urgent":
-      tono(880,0.12,0.1);
-      tono(988,0.12,0.1,0.15);
-      tono(1047,0.18,0.1,0.3);
-      break;
-    // Alarma de multa — patrón distintivo sin ser estridente
-    case"alarm":
-      tono(1047,0.1,0.1);
-      tono(784,0.1,0.1,0.15);
-      tono(1047,0.1,0.1,0.3);
-      tono(784,0.15,0.1,0.45);
-      break;
-  }
-}
+function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
+function beep(freq,dur,vol,delay=0){try{const ctx=getAudio(),osc=ctx.createOscillator(),gain=ctx.createGain();osc.connect(gain);gain.connect(ctx.destination);osc.frequency.value=freq;osc.type="sine";gain.gain.setValueAtTime(0,ctx.currentTime+delay);gain.gain.linearRampToValueAtTime(vol,ctx.currentTime+delay+0.01);gain.gain.linearRampToValueAtTime(0,ctx.currentTime+delay+dur);osc.start(ctx.currentTime+delay);osc.stop(ctx.currentTime+delay+dur+0.05);}catch(e){}}
+function sonarAlarma(t){switch(t){case"soft":beep(880,0.2,0.2);break;case"medium":beep(660,0.25,0.3);beep(880,0.25,0.3,0.3);break;case"urgent":beep(880,0.2,0.4);beep(880,0.2,0.4,0.25);beep(1100,0.3,0.5,0.5);break;case"alarm":for(let i=0;i<4;i++)beep(1200,0.15,0.6,i*0.22);break;}}
 
 // ══ SISTEMA DE VOZ — TUNIM ASISTENTE ══
 let vozLista=false;
@@ -1131,38 +1372,83 @@ function formatFechaCol(d){
   return dias[d.getDay()]+" "+d.getDate()+" "+meses[d.getMonth()]+" "+d.getFullYear();
 }
 
-// ══ REPORTE POR CORREO ══
+// ══ REPORTE POR CORREO — EmailJS ══
 function enviarReportePorCorreo(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
   const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
-  const {total:totalGastos}=obtenerGastosHoy();
+  const {gastos,total:totalGastos}=obtenerGastosHoy();
+  const pct=obtenerPctPropietario();
   const neto=Math.max(0,totalDin-totalGastos);
+  const propietario=Math.round(neto*(pct/100));
+  const conductor=neto-propietario;
   const hoy=formatFechaCol(horaColombiaActual());
   const placa=configTurno.placa||"---";
 
-  let cuerpo=`TUNIM — Reporte diario\n`;
-  cuerpo+=`Fecha: ${hoy}\n`;
-  cuerpo+=`Vehículo: ${placa}\n`;
-  cuerpo+=`Conductor: ${configTurno.conductor||"---"}\n\n`;
-  cuerpo+=`RECAUDO:\n`;
+  let reporte="TUNIM - Reporte Diario\n";
+  reporte+="===================================\n";
+  reporte+="Fecha: "+hoy+"\n";
+  reporte+="Vehiculo: "+placa+"\n";
+  reporte+="Hora inicio: "+(configTurno.horaInicio||"-")+"\n\n";
+  reporte+="RECAUDO POR RUTA:\n";
+  reporte+="-----------------------------------\n";
   RUTAS.forEach((r,i)=>{
-    if(estado.conteos[i]>0)cuerpo+=`  ${r.nombre}: ${estado.conteos[i]} pax = $${(estado.conteos[i]*r.precio).toLocaleString("es-CO")}\n`;
+    if(estado.conteos[i]>0){
+      reporte+=r.nombre+"\n";
+      reporte+="  "+estado.conteos[i]+" pax x $"+r.precio.toLocaleString("es-CO")+" = $"+(estado.conteos[i]*r.precio).toLocaleString("es-CO")+"\n";
+    }
   });
-  cuerpo+=`\nTOTAL PASAJEROS: ${totalPax}\n`;
-  cuerpo+=`TOTAL RECAUDADO: $${totalDin.toLocaleString("es-CO")}\n`;
-  cuerpo+=`TOTAL GASTOS: $${totalGastos.toLocaleString("es-CO")}\n`;
-  cuerpo+=`NETO DEL DÍA: $${neto.toLocaleString("es-CO")}\n\n`;
-  cuerpo+=`TUNIM © 2026 ACCESVIAL`;
+  reporte+="-----------------------------------\n";
+  reporte+="TOTAL PASAJEROS: "+totalPax+"\n";
+  reporte+="TOTAL RECAUDADO: $"+totalDin.toLocaleString("es-CO")+"\n\n";
+  reporte+="GASTOS DEL DIA:\n";
+  reporte+="-----------------------------------\n";
+  if(gastos.acpm)     reporte+="ACPM:      $"+gastos.acpm.toLocaleString("es-CO")+"\n";
+  if(gastos.desayuno) reporte+="Desayuno:  $"+gastos.desayuno.toLocaleString("es-CO")+"\n";
+  if(gastos.almuerzo) reporte+="Almuerzo:  $"+gastos.almuerzo.toLocaleString("es-CO")+"\n";
+  if(gastos.timbres)  reporte+="Timbres:   $"+gastos.timbres.toLocaleString("es-CO")+"\n";
+  if(gastos.parqueo)  reporte+="Parqueo:   $"+gastos.parqueo.toLocaleString("es-CO")+"\n";
+  if(gastos.otros)    reporte+="Otros:     $"+gastos.otros.toLocaleString("es-CO")+"\n";
+  reporte+="TOTAL GASTOS: $"+totalGastos.toLocaleString("es-CO")+"\n\n";
+  reporte+="LIQUIDACION NETA:\n";
+  reporte+="-----------------------------------\n";
+  reporte+="Neto del dia: $"+neto.toLocaleString("es-CO")+"\n";
+  reporte+="Propietario ("+pct+"%): $"+propietario.toLocaleString("es-CO")+"\n";
+  reporte+="Conductor ("+(100-pct)+"%): $"+conductor.toLocaleString("es-CO")+"\n\n";
+  reporte+="===================================\n";
+  reporte+="TUNIM (c) 2026 ACCESVIAL";
 
-  const asunto=encodeURIComponent(`TUNIM Reporte ${hoy} — ${placa}`);
-  const body=encodeURIComponent(cuerpo);
-  const correo=encodeURIComponent("accesvialgerencia@gmail.com");
-  window.open(`mailto:${correo}?subject=${asunto}&body=${body}`,"_blank");
-  mostrarToast("📧 Abriendo correo con reporte...","");
+  mostrarToast("Enviando reporte...","");
+
+  emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+    fecha: hoy,
+    placa: placa,
+    reporte: reporte
+  }).then(()=>{
+    mostrarToast("Reporte enviado a tu correo","");
+    hablar("Reporte del dia enviado correctamente.",0.9,1.1);
+  }).catch((err)=>{
+    console.warn("EmailJS error:",err);
+    const asunto=encodeURIComponent("TUNIM Reporte "+hoy+" - "+placa);
+    const body=encodeURIComponent(reporte);
+    window.open("mailto:accesvialgerencia@gmail.com?subject="+asunto+"&body="+body,"_blank");
+    mostrarToast("Abriendo correo manualmente...","warn");
+  });
 }
 
 // ══ REGISTRAR PASAJERO ══
 let confirmTimer=null;
+function toggleGPS(){
+  if(gpsActivo){
+    detenerGPS();
+    document.getElementById("btnGPS").textContent="📍 GPS";
+    document.getElementById("btnGPS").style.color="var(--verde)";
+  }else{
+    iniciarGPS();
+    document.getElementById("btnGPS").textContent="🟢 GPS ON";
+    document.getElementById("btnGPS").style.color="var(--amarillo)";
+  }
+}
+
 function registrar(idx){
   const ruta=RUTAS[idx];
   const ahora=horaColombiaActual();
@@ -1174,6 +1460,8 @@ function registrar(idx){
   estado.historial.unshift(reg);
   if(estado.historial.length>300)estado.historial.pop();
   guardarEstado();
+  // Agregar pasajero a la lista de abordo para geocercas
+  pasajerosABordo.push({idx, nombre:ruta.nombre, precio:ruta.precio, viaje:viajeActual, num:totalHoy, hora:reg.hora});
   const btn=document.querySelector(`.btn-dest[data-idx="${idx}"]`);
   btn.classList.remove("flash-anim");void btn.offsetWidth;btn.classList.add("flash-anim");
   setTimeout(()=>btn.classList.remove("flash-anim"),300);
