@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║   TUNIM ADMIN — Panel de Gestión ACCESVIAL                       ║
+║   © 2026 ACCESVIAL — Todos los derechos reservados               ║
+║   ID: TUNIM-ACCESVIAL-20260608-COR-FMBS                          ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TUNIM Admin — ACCESVIAL</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>emailjs.init("CF4qcrUm2UKLzWy8");</script>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, updateDoc, deleteDoc, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+    authDomain: "tunim-9064e.firebaseapp.com",
+    projectId: "tunim-9064e",
+    storageBucket: "tunim-9064e.firebasestorage.app",
+    messagingSenderId: "948598556990",
+    appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, updateDoc, deleteDoc, serverTimestamp };
+  window._fbReady = false;
+
+  signInAnonymously(auth).then(() => {
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  }).catch(() => {
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  });
+</script>
+
+<style>
+:root{
+  --bg:#06090D;--surface:#0D1117;--surface2:#131920;
+  --border:#1C2733;--border2:#243040;
+  --text:#E8EDF2;--muted:#5A6A7A;--muted2:#7A8A9A;
+  --amarillo:#F5C800;--verde:#00C47A;--rojo:#E8354F;
+  --azul:#2B6CB0;--azul-claro:#4A90D9;--blanco:#FFFFFF;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif}
+
+/* ── LOGIN ADMIN ── */
+.login-admin{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1000}
+.login-box{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:32px 24px;width:100%;max-width:360px;text-align:center}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:2.5rem;letter-spacing:4px;color:var(--blanco)}
+.login-logo span{color:var(--amarillo)}
+.login-sub{font-size:0.65rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:28px;display:block}
+.login-input{width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:12px 16px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:1.1rem;letter-spacing:4px;text-align:center;outline:none;margin-bottom:12px;transition:border-color 0.2s}
+.login-input:focus{border-color:var(--amarillo)}
+.login-btn{width:100%;padding:14px;background:var(--amarillo);border:none;border-radius:10px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;color:#000}
+.login-error{color:var(--rojo);font-size:0.75rem;margin-top:8px;display:none}
+
+/* ── HEADER ── */
+.admin-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.admin-logo{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px}
+.admin-logo span{color:var(--amarillo)}
+.admin-badge{font-size:0.55rem;background:rgba(124,77,255,0.15);color:#A78BFA;border:1px solid rgba(124,77,255,0.3);padding:3px 8px;border-radius:20px;letter-spacing:1px;font-weight:700}
+.btn-logout{background:none;border:1px solid var(--border2);color:var(--muted);font-size:0.6rem;padding:4px 10px;border-radius:20px;cursor:pointer;font-family:'Inter',sans-serif}
+
+/* ── TABS ── */
+.admin-tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+.atab{flex:none;padding:12px 16px;font-size:0.58rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;white-space:nowrap;transition:all 0.2s}
+.atab.active{color:var(--amarillo);border-bottom-color:var(--amarillo)}
+
+.apage{display:none;padding:16px;padding-bottom:40px}
+.apage.active{display:block}
+
+/* ── STATS CARDS ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center}
+.stat-val{font-family:'Bebas Neue',sans-serif;font-size:2.2rem;line-height:1}
+.stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.stat-card.verde .stat-val{color:var(--verde)}
+.stat-card.amarillo .stat-val{color:var(--amarillo)}
+.stat-card.rojo .stat-val{color:var(--rojo)}
+.stat-card.azul .stat-val{color:var(--azul-claro)}
+
+/* ── CARDS ── */
+.acard{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:12px}
+.acard-head{padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.acard-title{font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+.acard-body{padding:14px}
+
+/* ── VEHÍCULO CARDS ── */
+.vehiculo-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;position:relative}
+.vc-placa{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;color:var(--amarillo);letter-spacing:3px}
+.vc-nombre{font-size:0.82rem;font-weight:600;color:var(--text);margin-top:4px}
+.vc-info{font-size:0.62rem;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace}
+.vc-empresa{font-size:0.6rem;color:var(--azul-claro);margin-top:3px}
+.vc-badge{position:absolute;top:12px;right:12px;font-size:0.6rem;padding:3px 10px;border-radius:20px;font-weight:700;letter-spacing:1px}
+.badge-pendiente{background:rgba(245,200,0,0.1);color:var(--amarillo);border:1px solid rgba(245,200,0,0.3)}
+.badge-activo{background:rgba(0,196,122,0.1);color:var(--verde);border:1px solid rgba(0,196,122,0.3)}
+.badge-vencido{background:rgba(232,53,79,0.1);color:var(--rojo);border:1px solid rgba(232,53,79,0.3)}
+.badge-suspendido{background:rgba(90,106,122,0.15);color:var(--muted);border:1px solid var(--border)}
+
+.vc-dias{font-size:0.7rem;font-weight:700;margin-top:6px}
+.vc-dias.urgente{color:var(--rojo)}
+.vc-dias.pronto{color:var(--amarillo)}
+.vc-dias.ok{color:var(--verde)}
+
+.vc-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.vcs-item{text-align:center}
+.vcs-val{font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--text)}
+.vcs-lbl{font-size:0.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+
+.vc-btns{display:flex;gap:6px;margin-top:10px}
+.btn-aprobar{flex:1;padding:8px;background:var(--verde);color:#000;border:none;border-radius:8px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px}
+.btn-rechazar{flex:1;padding:8px;background:var(--rojo);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px}
+.btn-suspender{flex:1;padding:8px;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px}
+.btn-renovar{flex:1;padding:8px;background:var(--azul);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.85rem;letter-spacing:1px}
+
+/* ── FORMULARIO ── */
+.f-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.f-group{display:flex;flex-direction:column;gap:4px}
+.f-label{font-size:0.58rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.f-input{background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.9rem;outline:none;transition:border-color 0.2s;width:100%}
+.f-input:focus{border-color:var(--amarillo)}
+.f-input::placeholder{color:var(--muted)}
+.f-select{background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.9rem;outline:none;width:100%;cursor:pointer}
+.btn-primary{width:100%;padding:13px;background:var(--amarillo);border:none;border-radius:10px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;color:#000;margin-top:6px}
+.btn-secondary{width:100%;padding:11px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.9rem;letter-spacing:1px;color:var(--muted);margin-top:6px}
+
+/* ── TARIFAS CONFIG ── */
+.tarifa-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ti-ruta{font-size:0.8rem;font-weight:600;color:var(--text)}
+.ti-precio{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:var(--amarillo)}
+.ti-geocercas{font-size:0.58rem;color:var(--muted);margin-top:2px}
+.btn-del-tarifa{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px}
+.btn-del-tarifa:hover{color:var(--rojo)}
+
+/* ── BARRA PROGRESO DÍAS ── */
+.dias-bar{height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden}
+.dias-fill{height:100%;border-radius:2px;transition:width 0.3s}
+
+/* ── TOAST ── */
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--verde);color:#000;padding:8px 18px;border-radius:30px;font-size:0.8rem;font-weight:700;opacity:0;transition:opacity 0.2s,transform 0.2s;z-index:9999;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.error{background:var(--rojo);color:#fff}
+.toast.warn{background:var(--amarillo);color:#000}
+
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:24px;color:var(--muted);font-size:0.78rem;font-style:italic}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ADMIN ══ -->
+<div class="login-admin" id="loginAdmin">
+  <div class="login-box">
+    <div class="login-logo">TU<span>NIM</span></div>
+    <span class="login-sub">Panel Administrador · ACCESVIAL</span>
+    <input class="login-input" id="adminPin" type="password" placeholder="••••••" maxlength="10"
+      onkeydown="if(event.key==='Enter')verificarPin()">
+    <button class="login-btn" onclick="verificarPin()">INGRESAR</button>
+    <div class="login-error" id="loginError">PIN incorrecto</div>
+  </div>
+</div>
+
+<!-- ══ APP ADMIN ══ -->
+<div id="appAdmin" style="display:none">
+
+  <div class="admin-header">
+    <div>
+      <div class="admin-logo">TU<span>NIM</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="admin-badge">SUPER ADMIN</span>
+      <button class="btn-logout" onclick="cerrarSesion()">Salir</button>
+    </div>
+  </div>
+
+  <div class="admin-tabs">
+    <button class="atab active" onclick="aTab('dashboard',this)">📊 Dashboard</button>
+    <button class="atab" onclick="aTab('pendientes',this)">⏳ Pendientes</button>
+    <button class="atab" onclick="aTab('activos',this)">✅ Activos</button>
+    <button class="atab" onclick="aTab('vencidos',this)">🔴 Vencidos</button>
+    <button class="atab" onclick="aTab('empresas',this)">🏢 Empresas</button>
+    <button class="atab" onclick="aTab('tarifas',this)">💰 Tarifas</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="apage active" id="page-dashboard">
+    <div class="stats-grid">
+      <div class="stat-card verde"><div class="stat-val" id="st-activos">0</div><div class="stat-lbl">Vehículos activos</div></div>
+      <div class="stat-card amarillo"><div class="stat-val" id="st-pendientes">0</div><div class="stat-lbl">Pendientes aprobación</div></div>
+      <div class="stat-card rojo"><div class="stat-val" id="st-vencidos">0</div><div class="stat-lbl">Vencidos</div></div>
+      <div class="stat-card azul"><div class="stat-val" id="st-total">0</div><div class="stat-lbl">Total registrados</div></div>
+    </div>
+
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">🎁 En período de prueba gratuita</span></div>
+      <div class="acard-body" id="lista-prueba">
+        <div class="empty-state">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">⚠️ Por vencer (próximos 10 días)</span></div>
+      <div class="acard-body" id="lista-por-vencer">
+        <div class="empty-state">Cargando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PENDIENTES -->
+  <div class="apage" id="page-pendientes">
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">Solicitudes pendientes de aprobación</span></div>
+      <div class="acard-body" id="lista-pendientes">
+        <div class="empty-state">Sin solicitudes pendientes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVOS -->
+  <div class="apage" id="page-activos">
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">Vehículos activos en TUNIM</span></div>
+      <div class="acard-body" id="lista-activos">
+        <div class="empty-state">Sin vehículos activos</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VENCIDOS -->
+  <div class="apage" id="page-vencidos">
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">Vehículos con suscripción vencida</span></div>
+      <div class="acard-body" id="lista-vencidos">
+        <div class="empty-state">Sin vehículos vencidos</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EMPRESAS -->
+  <div class="apage" id="page-empresas">
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">Nueva empresa</span><button class="btn-aprobar" style="padding:4px 12px;font-size:0.65rem" onclick="toggleForm('form-empresa')">+ Agregar</button></div>
+      <div id="form-empresa" style="display:none;padding:14px;border-top:1px solid var(--border)">
+        <div class="f-grid">
+          <div class="f-group"><label class="f-label">Nombre empresa</label><input class="f-input" id="emp-nombre" placeholder="Ej: Autoboy S.A."></div>
+          <div class="f-group"><label class="f-label">NIT</label><input class="f-input" id="emp-nit" placeholder="900123456-1"></div>
+          <div class="f-group"><label class="f-label">Ciudad</label><input class="f-input" id="emp-ciudad" placeholder="Bogotá"></div>
+          <div class="f-group"><label class="f-label">Correo contacto</label><input class="f-input" id="emp-correo" type="email" placeholder="empresa@correo.com"></div>
+        </div>
+        <div class="f-grid">
+          <div class="f-group"><label class="f-label">Viajes por turno</label><input class="f-input" id="emp-viajes" type="number" value="3" min="1" max="10"></div>
+          <div class="f-group"><label class="f-label">Meta diaria ($)</label><input class="f-input" id="emp-meta" type="number" placeholder="750000"></div>
+        </div>
+        <button class="btn-primary" onclick="crearEmpresa()">✓ GUARDAR EMPRESA</button>
+        <button class="btn-secondary" onclick="toggleForm('form-empresa')">✕ CANCELAR</button>
+      </div>
+    </div>
+    <div class="acard">
+      <div class="acard-head"><span class="acard-title">Empresas registradas</span></div>
+      <div class="acard-body" id="lista-empresas"><div class="empty-state">Sin empresas</div></div>
+    </div>
+  </div>
+
+  <!-- TARIFAS -->
+  <div class="apage" id="page-tarifas">
+    <div class="acard">
+      <div class="acard-head">
+        <span class="acard-title">Configurar tarifas por empresa</span>
+      </div>
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+        <div class="f-group" style="margin-bottom:10px">
+          <label class="f-label">Seleccionar empresa</label>
+          <select class="f-select" id="sel-empresa-tarifas" onchange="cargarTarifasEmpresa()">
+            <option value="">Selecciona empresa...</option>
+          </select>
+        </div>
+      </div>
+      <div id="tarifas-empresa-body" style="padding:14px">
+        <div class="empty-state">Selecciona una empresa para ver sus tarifas</div>
+      </div>
+    </div>
+
+    <div class="acard" id="form-tarifa-card" style="display:none">
+      <div class="acard-head"><span class="acard-title">Agregar tarifa</span></div>
+      <div style="padding:14px">
+        <div class="f-grid">
+          <div class="f-group"><label class="f-label">Nombre ruta</label><input class="f-input" id="tar-nombre" placeholder="Ej: Soacha ↔ Bogotá"></div>
+          <div class="f-group"><label class="f-label">Precio ($)</label><input class="f-input" id="tar-precio" type="number" placeholder="3700"></div>
+          <div class="f-group"><label class="f-label">Geocerca origen</label>
+            <select class="f-select" id="tar-origen">
+              <option value="G1">G1 — Bosa Tama / Soacha</option>
+              <option value="G2">G2 — Bosa Estación</option>
+              <option value="G3">G3 — Av. Villavicencio</option>
+              <option value="G4">G4 — Río Bogotá</option>
+              <option value="G5">G5 — Peaje Calle 13</option>
+              <option value="G6">G6 — INPEC Funza/Mosquera</option>
+              <option value="G7">G7 — Fontibón Calle 13</option>
+              <option value="G8">G8 — Planadas</option>
+            </select>
+          </div>
+          <div class="f-group"><label class="f-label">Geocerca destino</label>
+            <select class="f-select" id="tar-destino">
+              <option value="G1">G1 — Bosa Tama / Soacha</option>
+              <option value="G2">G2 — Bosa Estación</option>
+              <option value="G3">G3 — Av. Villavicencio</option>
+              <option value="G4">G4 — Río Bogotá</option>
+              <option value="G5">G5 — Peaje Calle 13</option>
+              <option value="G6">G6 — INPEC Funza/Mosquera</option>
+              <option value="G7">G7 — Fontibón Calle 13</option>
+              <option value="G8">G8 — Planadas</option>
+            </select>
+          </div>
+          <div class="f-group"><label class="f-label">Desde</label><input class="f-input" id="tar-desde" placeholder="Ej: Soacha"></div>
+          <div class="f-group"><label class="f-label">Hasta</label><input class="f-input" id="tar-hasta" placeholder="Ej: Bogotá"></div>
+        </div>
+        <div class="f-group" style="margin-bottom:10px">
+          <label class="f-label">Voz al pasajero</label>
+          <input class="f-input" id="tar-voz" placeholder="Ej: Su destino es Bosa Estación. Que tenga buen viaje.">
+        </div>
+        <button class="btn-primary" onclick="agregarTarifa()">✓ AGREGAR TARIFA</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /appAdmin -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══ PIN ADMIN ══
+const ADMIN_PIN = "tunim2026";
+
+function verificarPin(){
+  const pin = document.getElementById("adminPin").value;
+  if(pin === ADMIN_PIN){
+    document.getElementById("loginAdmin").style.display = "none";
+    document.getElementById("appAdmin").style.display = "block";
+    cargarTodo();
+  } else {
+    document.getElementById("loginError").style.display = "block";
+    setTimeout(()=>document.getElementById("loginError").style.display="none", 2000);
+  }
+}
+
+function cerrarSesion(){
+  document.getElementById("loginAdmin").style.display = "flex";
+  document.getElementById("appAdmin").style.display = "none";
+  document.getElementById("adminPin").value = "";
+}
+
+// ══ TABS ══
+function aTab(name, btn){
+  document.querySelectorAll(".apage").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".atab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("page-"+name).classList.add("active");
+  btn.classList.add("active");
+}
+
+// ══ CARGAR TODO ══
+function cargarTodo(){
+  if(!window._fbReady){ setTimeout(cargarTodo, 500); return; }
+  cargarVehiculos();
+  cargarEmpresas();
+}
+window.addEventListener("fbReady", ()=>{ if(document.getElementById("appAdmin").style.display!=="none") cargarTodo(); });
+
+// ══ VEHÍCULOS ══
+let todosVehiculos = [];
+
+async function cargarVehiculos(){
+  const {db, collection, getDocs} = window._fb;
+  const snap = await getDocs(collection(db, "solicitudes_tunim"));
+  todosVehiculos = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const hoy = new Date();
+
+  // Stats
+  const activos = todosVehiculos.filter(v=>v.estado==="activo");
+  const pendientes = todosVehiculos.filter(v=>v.estado==="pendiente");
+  const vencidos = todosVehiculos.filter(v=>v.estado==="vencido"||
+    (v.estado==="activo"&&v.fechaVencimiento&&new Date(v.fechaVencimiento.toDate?v.fechaVencimiento.toDate():v.fechaVencimiento)<hoy));
+
+  document.getElementById("st-activos").textContent = activos.length;
+  document.getElementById("st-pendientes").textContent = pendientes.length;
+  document.getElementById("st-vencidos").textContent = vencidos.length;
+  document.getElementById("st-total").textContent = todosVehiculos.length;
+
+  // Listas
+  renderPendientes(pendientes);
+  renderActivos(activos);
+  renderVencidos(vencidos);
+  renderDashboard(activos, hoy);
+}
+
+function diasRestantes(fechaVenc){
+  if(!fechaVenc) return 0;
+  const fv = fechaVenc.toDate ? fechaVenc.toDate() : new Date(fechaVenc);
+  const diff = fv - new Date();
+  return Math.max(0, Math.ceil(diff/(1000*60*60*24)));
+}
+
+function renderVehiculoCard(v, botones=""){
+  const dias = diasRestantes(v.fechaVencimiento);
+  const pct = Math.min(100, Math.round((30-dias)/30*100));
+  const diasClass = dias <= 3 ? "urgente" : dias <= 10 ? "pronto" : "ok";
+  const fillColor = dias <= 3 ? "#E8354F" : dias <= 10 ? "#F5C800" : "#00C47A";
+
+  return `
+    <div class="vehiculo-card">
+      <span class="vc-badge badge-${v.estado||'pendiente'}">${(v.estado||'PENDIENTE').toUpperCase()}</span>
+      <div class="vc-placa">${v.placa||"---"}</div>
+      <div class="vc-nombre">${v.nombres||"—"}</div>
+      <div class="vc-info">CC: ${v.cedula||"—"} · Orden: ${v.orden||"—"}</div>
+      <div class="vc-info">${v.correo||"—"} · ${v.telefono||"—"}</div>
+      <div class="vc-empresa">${v.empresa||"—"}</div>
+      ${dias > 0 ? `
+        <div class="vc-dias ${diasClass}">⏳ ${dias} días restantes de prueba</div>
+        <div class="dias-bar"><div class="dias-fill" style="width:${pct}%;background:${fillColor}"></div></div>
+      ` : ''}
+      <div class="vc-stats">
+        <div class="vcs-item"><div class="vcs-val">${v.totalPasajeros||0}</div><div class="vcs-lbl">Pasajeros</div></div>
+        <div class="vcs-item"><div class="vcs-val">$${((v.totalRecaudo||0)/1000).toFixed(0)}k</div><div class="vcs-lbl">Recaudo</div></div>
+        <div class="vcs-item"><div class="vcs-val">${v.diasUsando||0}</div><div class="vcs-lbl">Días usando</div></div>
+      </div>
+      <div class="vc-btns">${botones}</div>
+    </div>`;
+}
+
+function renderPendientes(lista){
+  const cont = document.getElementById("lista-pendientes");
+  if(!lista.length){ cont.innerHTML='<div class="empty-state">Sin solicitudes pendientes 🎉</div>'; return; }
+  cont.innerHTML = lista.map(v => renderVehiculoCard(v,
+    `<button class="btn-aprobar" onclick="aprobarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">✓ APROBAR</button>
+     <button class="btn-rechazar" onclick="rechazarVehiculo('${v.id}','${v.placa}')">✕ RECHAZAR</button>`
+  )).join("");
+}
+
+function renderActivos(lista){
+  const cont = document.getElementById("lista-activos");
+  if(!lista.length){ cont.innerHTML='<div class="empty-state">Sin vehículos activos</div>'; return; }
+  cont.innerHTML = lista.map(v => renderVehiculoCard(v,
+    `<button class="btn-suspender" onclick="suspenderVehiculo('${v.id}','${v.placa}')">⏸ SUSPENDER</button>
+     <button class="btn-renovar" onclick="renovarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">🔄 RENOVAR 30D</button>`
+  )).join("");
+}
+
+function renderVencidos(lista){
+  const cont = document.getElementById("lista-vencidos");
+  if(!lista.length){ cont.innerHTML='<div class="empty-state">Sin vehículos vencidos</div>'; return; }
+  cont.innerHTML = lista.map(v => renderVehiculoCard(v,
+    `<button class="btn-renovar" onclick="renovarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">🔄 RENOVAR 30D</button>
+     <button class="btn-rechazar" onclick="eliminarVehiculo('${v.id}','${v.placa}')">🗑 ELIMINAR</button>`
+  )).join("");
+}
+
+function renderDashboard(activos, hoy){
+  // En prueba gratuita
+  const enPrueba = activos.filter(v => v.planTunim === "prueba" || v.esPrueba);
+  const dEl = document.getElementById("lista-prueba");
+  dEl.innerHTML = enPrueba.length ? enPrueba.map(v=>{
+    const dias = diasRestantes(v.fechaVencimiento);
+    const diasClass = dias<=3?"urgente":dias<=10?"pronto":"ok";
+    return `<div class="vehiculo-card">
+      <div class="vc-placa">${v.placa}</div>
+      <div class="vc-nombre">${v.nombres}</div>
+      <div class="vc-empresa">${v.empresa}</div>
+      <div class="vc-dias ${diasClass}">⏳ ${dias} días restantes · ${v.totalPasajeros||0} pasajeros registrados</div>
+    </div>`;
+  }).join("") : '<div class="empty-state">Sin vehículos en periodo de prueba</div>';
+
+  // Por vencer
+  const porVencer = activos.filter(v=>{ const d=diasRestantes(v.fechaVencimiento); return d<=10&&d>0; });
+  const pvEl = document.getElementById("lista-por-vencer");
+  pvEl.innerHTML = porVencer.length ? porVencer.map(v=>{
+    const dias = diasRestantes(v.fechaVencimiento);
+    return `<div class="vehiculo-card">
+      <div class="vc-placa">${v.placa}</div>
+      <div class="vc-nombre">${v.nombres} · ${v.correo}</div>
+      <div class="vc-dias urgente">⚠️ Vence en ${dias} día${dias===1?'':'s'} — Contactar ahora</div>
+      <div class="vc-btns">
+        <button class="btn-renovar" onclick="renovarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">🔄 RENOVAR</button>
+      </div>
+    </div>`;
+  }).join("") : '<div class="empty-state">Ningún vehículo por vencer pronto ✅</div>';
+}
+
+// ══ ACCIONES ══
+async function aprobarVehiculo(id, placa, correo, nombres){
+  if(!confirm(`¿Aprobar el vehículo ${placa} de ${nombres}?\nSe activarán 30 días de prueba gratuita.`)) return;
+  const {db, doc, updateDoc, serverTimestamp} = window._fb;
+  const venc = new Date(); venc.setDate(venc.getDate()+30);
+  await updateDoc(doc(db,"solicitudes_tunim",id),{
+    estado: "activo",
+    esPrueba: true,
+    planTunim: "prueba",
+    fechaAprobacion: serverTimestamp(),
+    fechaVencimiento: venc.toISOString()
+  });
+  // Notificar por correo
+  emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+    fecha: new Date().toLocaleDateString("es-CO"),
+    placa: placa,
+    reporte: `Estimado/a ${nombres},\n\nSu vehículo ${placa} ha sido APROBADO en TUNIM.\nTiene 30 días de prueba gratuita a partir de hoy.\n\nAcceda a TUNIM en:\nhttps://accesvialgerencia-afk.github.io/TUNIM/\n\nATENTAMENTE,\nACCESVIAL — TUNIM 2026`
+  }).catch(()=>{});
+  toast("✅ Vehículo aprobado — correo enviado","");
+  cargarVehiculos();
+}
+
+async function rechazarVehiculo(id, placa){
+  if(!confirm(`¿Rechazar el vehículo ${placa}?`)) return;
+  const {db, doc, updateDoc, serverTimestamp} = window._fb;
+  await updateDoc(doc(db,"solicitudes_tunim",id),{ estado:"rechazado", fechaRechazo: serverTimestamp() });
+  toast("Vehículo rechazado","warn");
+  cargarVehiculos();
+}
+
+async function suspenderVehiculo(id, placa){
+  if(!confirm(`¿Suspender el vehículo ${placa}?`)) return;
+  const {db, doc, updateDoc} = window._fb;
+  await updateDoc(doc(db,"solicitudes_tunim",id),{ estado:"suspendido" });
+  toast("Vehículo suspendido","warn");
+  cargarVehiculos();
+}
+
+async function renovarVehiculo(id, placa, correo, nombres){
+  if(!confirm(`¿Renovar 30 días para el vehículo ${placa}?`)) return;
+  const {db, doc, updateDoc, serverTimestamp} = window._fb;
+  const venc = new Date(); venc.setDate(venc.getDate()+30);
+  await updateDoc(doc(db,"solicitudes_tunim",id),{
+    estado:"activo", fechaVencimiento: venc.toISOString(), ultimaRenovacion: serverTimestamp()
+  });
+  emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+    fecha: new Date().toLocaleDateString("es-CO"),
+    placa: placa,
+    reporte: `Estimado/a ${nombres},\n\nSu suscripción de TUNIM para el vehículo ${placa} ha sido RENOVADA por 30 días.\n\nATENTAMENTE,\nACCESVIAL — TUNIM 2026`
+  }).catch(()=>{});
+  toast("✅ Renovado 30 días","");
+  cargarVehiculos();
+}
+
+async function eliminarVehiculo(id, placa){
+  if(!confirm(`¿Eliminar permanentemente el vehículo ${placa}? Esta acción no se puede deshacer.`)) return;
+  const {db, doc, deleteDoc} = window._fb;
+  await deleteDoc(doc(db,"solicitudes_tunim",id));
+  toast("Vehículo eliminado","warn");
+  cargarVehiculos();
+}
+
+// ══ EMPRESAS ══
+let empresasCache = [];
+
+async function cargarEmpresas(){
+  const {db, collection, getDocs} = window._fb;
+  const snap = await getDocs(collection(db,"empresas"));
+  empresasCache = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const lista = document.getElementById("lista-empresas");
+  lista.innerHTML = empresasCache.length ? empresasCache.map(e=>`
+    <div class="vehiculo-card">
+      <div class="vc-placa" style="font-size:0.9rem;letter-spacing:1px">${e.nombre}</div>
+      <div class="vc-info">NIT: ${e.nit||"—"} · ${e.ciudad||"—"}</div>
+      <div class="vc-info">${e.correo||"—"}</div>
+      <div class="vc-empresa">Viajes/turno: ${e.viajesPorTurno||3} · Meta: $${(e.metaDiaria||0).toLocaleString("es-CO")}/día</div>
+    </div>`).join("") : '<div class="empty-state">Sin empresas registradas</div>';
+
+  // Poblar selects
+  const opts = '<option value="">Selecciona empresa...</option>' +
+    empresasCache.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join("");
+  document.getElementById("sel-empresa-tarifas").innerHTML = opts;
+}
+
+async function crearEmpresa(){
+  const nombre = document.getElementById("emp-nombre").value.trim();
+  const nit    = document.getElementById("emp-nit").value.trim();
+  const ciudad = document.getElementById("emp-ciudad").value.trim();
+  const correo = document.getElementById("emp-correo").value.trim();
+  const viajes = parseInt(document.getElementById("emp-viajes").value)||3;
+  const meta   = parseInt(document.getElementById("emp-meta").value)||0;
+  if(!nombre){ toast("Ingresa el nombre de la empresa","error"); return; }
+  const {db, collection, addDoc, serverTimestamp} = window._fb;
+  await addDoc(collection(db,"empresas"),{nombre,nit,ciudad,correo,viajesPorTurno:viajes,metaDiaria:meta,creadoEn:serverTimestamp()});
+  toast("✅ Empresa creada");
+  toggleForm("form-empresa");
+  ["emp-nombre","emp-nit","emp-ciudad","emp-correo","emp-meta"].forEach(id=>document.getElementById(id).value="");
+  cargarEmpresas();
+}
+
+// ══ TARIFAS POR EMPRESA ══
+let tarifasEmpresaActual = [];
+
+async function cargarTarifasEmpresa(){
+  const empId = document.getElementById("sel-empresa-tarifas").value;
+  if(!empId){ document.getElementById("tarifas-empresa-body").innerHTML='<div class="empty-state">Selecciona una empresa</div>'; document.getElementById("form-tarifa-card").style.display="none"; return; }
+  document.getElementById("form-tarifa-card").style.display="block";
+  const {db, collection, query, where, getDocs} = window._fb;
+  const q = query(collection(db,"tarifas_empresa"), where("empresaId","==",empId));
+  const snap = await getDocs(q);
+  tarifasEmpresaActual = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const body = document.getElementById("tarifas-empresa-body");
+  body.innerHTML = tarifasEmpresaActual.length ?
+    tarifasEmpresaActual.map(t=>`
+      <div class="tarifa-item">
+        <div>
+          <div class="ti-ruta">${t.nombre}</div>
+          <div class="ti-geocercas">${t.origen||""} → ${t.destino||""}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="ti-precio">$${(t.precio||0).toLocaleString("es-CO")}</div>
+          <button class="btn-del-tarifa" onclick="eliminarTarifa('${t.id}')">🗑</button>
+        </div>
+      </div>`).join("") :
+    '<div class="empty-state">Sin tarifas configuradas — agrega la primera</div>';
+}
+
+async function agregarTarifa(){
+  const empId  = document.getElementById("sel-empresa-tarifas").value;
+  const nombre = document.getElementById("tar-nombre").value.trim();
+  const precio = parseInt(document.getElementById("tar-precio").value)||0;
+  const origen = document.getElementById("tar-origen").value;
+  const destino= document.getElementById("tar-destino").value;
+  const desde  = document.getElementById("tar-desde").value.trim();
+  const hasta  = document.getElementById("tar-hasta").value.trim();
+  const voz    = document.getElementById("tar-voz").value.trim();
+  if(!empId||!nombre||!precio){ toast("Completa todos los campos","error"); return; }
+  const {db, collection, addDoc, serverTimestamp} = window._fb;
+  await addDoc(collection(db,"tarifas_empresa"),{empresaId:empId,nombre,precio,origen,destino,desde,hasta,voz,creadoEn:serverTimestamp()});
+  toast("✅ Tarifa agregada");
+  ["tar-nombre","tar-precio","tar-desde","tar-hasta","tar-voz"].forEach(id=>document.getElementById(id).value="");
+  cargarTarifasEmpresa();
+}
+
+async function eliminarTarifa(id){
+  if(!confirm("¿Eliminar esta tarifa?")) return;
+  const {db, doc, deleteDoc} = window._fb;
+  await deleteDoc(doc(db,"tarifas_empresa",id));
+  toast("Tarifa eliminada","warn");
+  cargarTarifasEmpresa();
+}
+
+// ══ HELPERS ══
+function toggleForm(id){ const f=document.getElementById(id); f.style.display=f.style.display==="none"?"block":"none"; }
+
+let toastT=null;
+function toast(msg,tipo=""){
+  const t=document.getElementById("toast");t.textContent=msg;
+  t.className="toast "+(tipo||"")+" show";
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),2800);
+}
+
+// Enter en PIN
+document.getElementById("adminPin").addEventListener("keydown",e=>{if(e.key==="Enter")verificarPin();});
+
+// Alertas automáticas de vencimiento (verificar cada vez que carga)
+window.addEventListener("fbReady",()=>{
+  setTimeout(async()=>{
+    const {db,collection,getDocs,query,where} = window._fb;
+    const snap = await getDocs(collection(db,"solicitudes_tunim"));
+    const hoy = new Date();
+    snap.docs.forEach(d=>{
+      const v = d.data();
+      if(v.estado!=="activo"||!v.fechaVencimiento) return;
+      const fv = v.fechaVencimiento.toDate ? v.fechaVencimiento.toDate() : new Date(v.fechaVencimiento);
+      const dias = Math.ceil((fv-hoy)/(1000*60*60*24));
+      if(dias===10||dias===3||dias===0){
+        const msg = dias===0
+          ? `El vehículo ${v.placa} (${v.nombres}) VENCIÓ HOY. Contactar para renovar.`
+          : `El vehículo ${v.placa} (${v.nombres}) vence en ${dias} días. Contactar al propietario.`;
+        emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+          fecha: hoy.toLocaleDateString("es-CO"),
+          placa: v.placa||"---",
+          reporte: msg
+        }).catch(()=>{});
+      }
+    });
+  }, 3000);
+});
+</script>
+</body>
+</html>
