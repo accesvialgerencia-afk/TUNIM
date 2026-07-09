@@ -72,11 +72,15 @@
 
 <style>
 :root{
-  --bg:#080C10;--surface:#0E1419;--surface2:#151C24;
-  --border:#1E2A35;--border2:#243040;
-  --text:#E8EDF2;--muted:#4A5A6A;--muted2:#6A7A8A;
-  --amarillo:#F5C800;--naranja:#FF6B1A;--verde:#00D68F;
-  --rojo:#FF3D5A;--azul:#4DB8FF;--cyan:#00E5CC;--morado:#A855F7;
+  /* Paleta profesional TUNIM — Transporte colombiano */
+  --bg:#06090D;--surface:#0D1117;--surface2:#131920;
+  --border:#1C2733;--border2:#243040;
+  --text:#E8EDF2;--muted:#5A6A7A;--muted2:#7A8A9A;
+  /* Colores principales — limpio y profesional */
+  --amarillo:#F5C800;--naranja:#E8650A;--verde:#00C47A;
+  --rojo:#E8354F;--azul:#2B6CB0;--azul-claro:#4A90D9;
+  --cyan:#00B4CC;--morado:#7C4DFF;--blanco:#FFFFFF;
+  --gris-oscuro:#1E2D3D;--gris-medio:#2A3A4A;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow-x:hidden}
@@ -158,14 +162,21 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 .dest-precio{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;letter-spacing:1px;line-height:1}
 .dest-badge{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:0.9rem;opacity:0;transform:scale(0.4);transition:opacity 0.25s,transform 0.25s;background:var(--accent);color:#000}
 .dest-badge.show{opacity:1;transform:scale(1)}
-.btn-dest[data-idx="0"]{--accent:#4DB8FF}.btn-dest[data-idx="0"] .dest-precio{color:#4DB8FF}
-.btn-dest[data-idx="1"]{--accent:#00E5CC}.btn-dest[data-idx="1"] .dest-precio{color:#00E5CC}
-.btn-dest[data-idx="2"]{--accent:#F5C800}.btn-dest[data-idx="2"] .dest-precio{color:#F5C800}
-.btn-dest[data-idx="3"]{--accent:#FF6B1A}.btn-dest[data-idx="3"] .dest-precio{color:#FF6B1A}
-.btn-dest[data-idx="4"]{--accent:#00D68F}.btn-dest[data-idx="4"] .dest-precio{color:#00D68F}
-.btn-dest[data-idx="5"]{--accent:#A855F7}.btn-dest[data-idx="5"] .dest-precio{color:#A855F7}
-.btn-dest[data-idx="6"]{--accent:#FF3D5A}.btn-dest[data-idx="6"] .dest-precio{color:#FF3D5A}
-.btn-dest[data-idx="7"]{--accent:#00E5CC}.btn-dest[data-idx="7"] .dest-precio{color:#00E5CC}
+/* Colores por ORIGEN de tarifa — mismo grupo = mismo color */
+/* Origen Soacha (G1): Azul oscuro */
+.btn-dest[data-idx="0"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="0"] .dest-precio{color:#4A90D9}
+.btn-dest[data-idx="1"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="1"] .dest-precio{color:#4A90D9}
+.btn-dest[data-idx="2"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="2"] .dest-precio{color:#4A90D9}
+/* Origen Funza/Mosquera (G6): Gris azulado */
+.btn-dest[data-idx="3"]{--accent:#4A90D9;--bg-btn:#152030}.btn-dest[data-idx="3"] .dest-precio{color:#7AB8F0}
+/* Origen Funza→Bogotá: Blanco/gris */
+.btn-dest[data-idx="4"]{--accent:#E8EDF2;--bg-btn:#1A2530}.btn-dest[data-idx="4"] .dest-precio{color:#C0CDD8}
+/* Origen Bogotá (G4/G7): Azul medio */
+.btn-dest[data-idx="5"]{--accent:#2B6CB0;--bg-btn:#0F1E2E}.btn-dest[data-idx="5"] .dest-precio{color:#4A90D9}
+/* Origen Soacha→Funza largo: Amarillo */
+.btn-dest[data-idx="6"]{--accent:#F5C800;--bg-btn:#1A1A00}.btn-dest[data-idx="6"] .dest-precio{color:#F5C800}
+/* Origen Planadas (especial): Blanco */
+.btn-dest[data-idx="7"]{--accent:#FFFFFF;--bg-btn:#1A2030}.btn-dest[data-idx="7"] .dest-precio{color:#FFFFFF}
 
 /* ── CONFIRMACIÓN VISUAL GRANDE ── */
 .confirm-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 0.08s}
@@ -1303,20 +1314,21 @@ function hablar(texto, velocidad=0.9, tono=1.1){
   window.speechSynthesis.speak(u);
 }
 
-// Mensajes motivadores para registro de pasajero
-const MENSAJES_PAGO=[
-  "Pago registrado",
-  "Pasajero registrado, ¡excelente!",
-  "Registro exitoso",
-  "Pago confirmado",
-  "Pasajero registrado correctamente",
-];
-let idxMensaje=0;
+// ══ VOZ AL PASAJERO SEGÚN TARIFA Y DESTINO ══
+const VOZ_DESTINOS = {
+  2300: "Bienvenido. Su destino es Bosa Estación. Que tenga buen viaje.",
+  3300: "Bienvenido. Su destino es Avenida Villavicencio con Primera de Mayo. Que tenga buen viaje.",
+  3700: "Bienvenido. Su tiquete cubre hasta cualquier punto de Bogotá antes del Río Bogotá. Que tenga buen viaje.",
+  6200: "Bienvenido. Su destino es Fontibón, Calle trece. Que tenga buen viaje.",
+  7000: "Bienvenido. Su destino es Funza o Mosquera, saliendo desde Bogotá. Que tenga buen viaje.",
+  8000: "Bienvenido. Su destino es Funza o Mosquera. Que tenga buen viaje.",
+  3000: "Bienvenido. Su destino es Funza o Mosquera desde el Río Bogotá. Que tenga buen viaje.",
+  3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
+};
 
-function vozPagoRegistrado(){
-  const msg=MENSAJES_PAGO[idxMensaje%MENSAJES_PAGO.length];
-  idxMensaje++;
-  hablar(msg,1.0,1.15);
+function vozPagoRegistrado(precio){
+  const msg = VOZ_DESTINOS[precio] || "Bienvenido. Pago registrado. Que tenga buen viaje.";
+  setTimeout(()=>hablar(msg, 0.92, 1.08), 300);
 }
 
 // Mensajes al cambiar de viaje
@@ -1467,7 +1479,7 @@ function registrar(idx){
   setTimeout(()=>btn.classList.remove("flash-anim"),300);
   mostrarConfirmacion(ruta.nombre,ruta.precio,totalHoy);
   sonarAlarma("soft");
-  vozPagoRegistrado();
+  vozPagoRegistrado(ruta.precio);
   actualizarUI();
   guardarPasajeroFirebase(reg);
 }
