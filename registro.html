@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║   TUNIM — Formulario de Registro de Propietario                  ║
+║   © 2026 ACCESVIAL — Todos los derechos reservados               ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TUNIM — Registro de Propietario</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>emailjs.init("CF4qcrUm2UKLzWy8");</script>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, query, where, getDocs, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+    authDomain: "tunim-9064e.firebaseapp.com",
+    projectId: "tunim-9064e",
+    storageBucket: "tunim-9064e.firebasestorage.app",
+    messagingSenderId: "948598556990",
+    appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  window._fb = { db, collection, addDoc, query, where, getDocs, serverTimestamp };
+  window._fbReady = false;
+
+  signInAnonymously(auth).then(() => {
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  }).catch(() => {
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  });
+</script>
+
+<style>
+:root{
+  --bg:#06090D;--surface:#0D1117;--surface2:#131920;
+  --border:#1C2733;--border2:#243040;
+  --text:#E8EDF2;--muted:#5A6A7A;
+  --amarillo:#F5C800;--verde:#00C47A;--rojo:#E8354F;
+  --azul:#2B6CB0;--azul-claro:#4A90D9;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif}
+
+.wrap{max-width:480px;margin:0 auto;padding:24px 16px 48px}
+
+/* HEADER */
+.reg-header{text-align:center;margin-bottom:28px}
+.reg-logo{font-family:'Bebas Neue',sans-serif;font-size:3rem;letter-spacing:6px;color:var(--text)}
+.reg-logo span{color:var(--amarillo)}
+.reg-sub{font-size:0.65rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-top:4px}
+.reg-desc{font-size:0.82rem;color:var(--muted);margin-top:12px;line-height:1.6;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
+.reg-desc strong{color:var(--amarillo)}
+
+/* PASOS */
+.pasos{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:24px}
+.paso{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1}
+.paso-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:1rem;border:2px solid var(--border2);color:var(--muted);background:var(--surface2);transition:all 0.3s}
+.paso-num.activo{border-color:var(--amarillo);color:var(--amarillo);background:rgba(245,200,0,0.08)}
+.paso-num.completo{border-color:var(--verde);color:var(--verde);background:rgba(0,196,122,0.08)}
+.paso-lbl{font-size:0.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;text-align:center}
+.paso-linea{flex:1;height:2px;background:var(--border);margin-bottom:16px}
+.paso-linea.activa{background:var(--amarillo)}
+
+/* SECCIONES */
+.seccion{display:none}
+.seccion.active{display:block}
+
+/* CARD */
+.reg-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:14px}
+.reg-card-head{padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:0.6rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+
+/* FORM */
+.f-body{padding:16px}
+.f-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.f-group{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.f-group.full{grid-column:1/-1}
+.f-label{font-size:0.6rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.f-input{background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.95rem;outline:none;transition:border-color 0.2s;width:100%}
+.f-input:focus{border-color:var(--amarillo)}
+.f-input::placeholder{color:var(--muted)}
+.f-input.error{border-color:var(--rojo)}
+.f-hint{font-size:0.58rem;color:var(--muted);margin-top:2px}
+.f-select{background:var(--surface2);border:1.5px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:0.95rem;outline:none;width:100%;cursor:pointer}
+
+/* TERMINOS */
+.terminos{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:0.72rem;color:var(--muted);line-height:1.6;margin-bottom:14px;max-height:120px;overflow-y:auto}
+.terminos strong{color:var(--text)}
+.check-term{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer}
+.check-term input{width:18px;height:18px;margin-top:2px;accent-color:var(--amarillo);cursor:pointer}
+.check-term span{font-size:0.75rem;color:var(--muted);line-height:1.5}
+
+/* BOTONES */
+.btn-primary{width:100%;padding:14px;background:var(--amarillo);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:3px;color:#000;transition:opacity 0.2s}
+.btn-primary:disabled{opacity:0.4;cursor:not-allowed}
+.btn-secondary{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.95rem;letter-spacing:2px;color:var(--muted);margin-top:8px}
+
+/* ÉXITO */
+.exito-box{text-align:center;padding:32px 16px}
+.exito-icon{font-size:4rem;margin-bottom:16px}
+.exito-titulo{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:3px;color:var(--verde);margin-bottom:8px}
+.exito-texto{font-size:0.85rem;color:var(--muted);line-height:1.7;margin-bottom:24px}
+.exito-datos{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:left;margin-bottom:20px}
+.exito-dato{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.8rem}
+.exito-dato:last-child{border-bottom:none}
+.exito-dato-lbl{color:var(--muted)}
+.exito-dato-val{color:var(--text);font-weight:600;font-family:'JetBrains Mono',monospace}
+.exito-aviso{background:rgba(245,200,0,0.06);border:1px solid rgba(245,200,0,0.2);border-radius:10px;padding:12px 14px;font-size:0.75rem;color:var(--amarillo);line-height:1.6}
+
+/* ERROR MSG */
+.campo-error{font-size:0.62rem;color:var(--rojo);margin-top:3px;display:none}
+
+/* TOAST */
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--verde);color:#000;padding:8px 18px;border-radius:30px;font-size:0.8rem;font-weight:700;opacity:0;transition:opacity 0.2s,transform 0.2s;z-index:9999;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.error{background:var(--rojo);color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="reg-header">
+    <div class="reg-logo">TU<span>NIM</span></div>
+    <div class="reg-sub">Registro de Propietario · ACCESVIAL 2026</div>
+    <div class="reg-desc">
+      Registra tu vehículo en TUNIM y accede a <strong>30 días gratis</strong> de control de recaudo en tiempo real. Tu solicitud será revisada y aprobada por ACCESVIAL en menos de 24 horas.
+    </div>
+  </div>
+
+  <!-- PASOS -->
+  <div class="pasos">
+    <div class="paso">
+      <div class="paso-num activo" id="p1">1</div>
+      <div class="paso-lbl">Datos personales</div>
+    </div>
+    <div class="paso-linea" id="linea1"></div>
+    <div class="paso">
+      <div class="paso-num" id="p2">2</div>
+      <div class="paso-lbl">Vehículo</div>
+    </div>
+    <div class="paso-linea" id="linea2"></div>
+    <div class="paso">
+      <div class="paso-num" id="p3">3</div>
+      <div class="paso-lbl">Confirmar</div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN 1: DATOS PERSONALES -->
+  <div class="seccion active" id="sec1">
+    <div class="reg-card">
+      <div class="reg-card-head">👤 Datos del propietario</div>
+      <div class="f-body">
+        <div class="f-grid">
+          <div class="f-group">
+            <label class="f-label">Nombres *</label>
+            <input class="f-input" id="reg-nombres" type="text" placeholder="Juan Carlos" autocomplete="off">
+            <span class="campo-error" id="err-nombres">Ingresa tus nombres</span>
+          </div>
+          <div class="f-group">
+            <label class="f-label">Apellidos *</label>
+            <input class="f-input" id="reg-apellidos" type="text" placeholder="Piravague Ayala" autocomplete="off">
+            <span class="campo-error" id="err-apellidos">Ingresa tus apellidos</span>
+          </div>
+        </div>
+        <div class="f-grid">
+          <div class="f-group">
+            <label class="f-label">Número de cédula *</label>
+            <input class="f-input" id="reg-cedula" type="number" placeholder="12345678" autocomplete="off">
+            <span class="campo-error" id="err-cedula">Ingresa tu cédula</span>
+          </div>
+          <div class="f-group">
+            <label class="f-label">Teléfono / WhatsApp *</label>
+            <input class="f-input" id="reg-telefono" type="tel" placeholder="3001234567" autocomplete="off">
+            <span class="campo-error" id="err-telefono">Ingresa tu teléfono</span>
+          </div>
+        </div>
+        <div class="f-group">
+          <label class="f-label">Correo electrónico *</label>
+          <input class="f-input" id="reg-correo" type="email" placeholder="tucorreo@gmail.com" autocomplete="off">
+          <div class="f-hint">Este correo recibirá las notificaciones de TUNIM</div>
+          <span class="campo-error" id="err-correo">Ingresa un correo válido</span>
+        </div>
+        <div class="f-group">
+          <label class="f-label">Empresa / Cooperativa *</label>
+          <input class="f-input" id="reg-empresa" type="text" placeholder="Ej: Autoboy S.A." autocomplete="off">
+          <div class="f-hint">Nombre de la cooperativa a la que pertenece el vehículo</div>
+          <span class="campo-error" id="err-empresa">Ingresa el nombre de la empresa</span>
+        </div>
+        <button class="btn-primary" onclick="irPaso2()">SIGUIENTE →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN 2: VEHÍCULO -->
+  <div class="seccion" id="sec2">
+    <div class="reg-card">
+      <div class="reg-card-head">🚌 Datos del vehículo</div>
+      <div class="f-body">
+        <div class="f-grid">
+          <div class="f-group">
+            <label class="f-label">Placa del vehículo *</label>
+            <input class="f-input" id="reg-placa" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" style="font-family:'JetBrains Mono',monospace;letter-spacing:3px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+            <span class="campo-error" id="err-placa">Ingresa la placa</span>
+          </div>
+          <div class="f-group">
+            <label class="f-label">Número de orden *</label>
+            <input class="f-input" id="reg-orden" type="text" placeholder="042" autocomplete="off" style="font-family:'JetBrains Mono',monospace;letter-spacing:3px">
+            <div class="f-hint">Número asignado por la cooperativa</div>
+            <span class="campo-error" id="err-orden">Ingresa el número de orden</span>
+          </div>
+        </div>
+        <div class="f-grid">
+          <div class="f-group">
+            <label class="f-label">Marca del vehículo</label>
+            <input class="f-input" id="reg-marca" type="text" placeholder="Ej: Chevrolet" autocomplete="off">
+          </div>
+          <div class="f-group">
+            <label class="f-label">Modelo / Año</label>
+            <input class="f-input" id="reg-modelo" type="text" placeholder="Ej: 2018" autocomplete="off">
+          </div>
+        </div>
+        <div class="f-group">
+          <label class="f-label">Corredor de operación *</label>
+          <select class="f-select" id="reg-corredor">
+            <option value="">Selecciona el corredor...</option>
+            <option value="Funza-Mosquera-Bogotá-Soacha">Funza · Mosquera · Bogotá · Soacha</option>
+            <option value="Planadas-Portal Dorado">Planadas · Portal Dorado</option>
+            <option value="Otro">Otro corredor</option>
+          </select>
+          <span class="campo-error" id="err-corredor">Selecciona el corredor</span>
+        </div>
+        <div class="f-group">
+          <label class="f-label">Código de verificación *</label>
+          <input class="f-input" id="reg-codigo" type="text" placeholder="Código dado por ACCESVIAL" autocomplete="off" style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+          <div class="f-hint">Solicita tu código al WhatsApp: 573143039606</div>
+          <span class="campo-error" id="err-codigo">Código incorrecto</span>
+        </div>
+        <button class="btn-primary" onclick="irPaso3()">SIGUIENTE →</button>
+        <button class="btn-secondary" onclick="irPaso1()">← ATRÁS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN 3: CONFIRMAR -->
+  <div class="seccion" id="sec3">
+    <div class="reg-card">
+      <div class="reg-card-head">✅ Confirmar registro</div>
+      <div class="f-body">
+        <div id="resumen-datos" style="margin-bottom:16px"></div>
+
+        <div class="terminos">
+          <strong>Términos de uso de TUNIM:</strong><br><br>
+          Al registrarte aceptas que:<br>
+          • TUNIM es una herramienta de control de recaudo desarrollada por ACCESVIAL.<br>
+          • Los datos registrados (pasajeros, recaudo, gastos) quedan almacenados en Firebase y son accesibles para el propietario del vehículo.<br>
+          • El período de prueba es de 30 días gratuitos desde la aprobación.<br>
+          • ACCESVIAL puede suspender el acceso por uso indebido del sistema.<br>
+          • La información personal es tratada conforme a la Ley 1581 de 2012 de protección de datos personales de Colombia.<br>
+          • ID del sistema: TUNIM-ACCESVIAL-20260608-COR-FMBS<br>
+          • © 2026 ACCESVIAL — Ley 23 de 1982 — Decisión Andina 351 de 1993
+        </div>
+
+        <div class="check-term">
+          <input type="checkbox" id="acepto-terminos" onchange="toggleEnviar()">
+          <span>Acepto los términos de uso de TUNIM y autorizo el tratamiento de mis datos personales según la Ley 1581 de 2012.</span>
+        </div>
+
+        <button class="btn-primary" id="btn-enviar" onclick="enviarSolicitud()" disabled>
+          📤 ENVIAR SOLICITUD
+        </button>
+        <button class="btn-secondary" onclick="irPaso2()">← ATRÁS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN ÉXITO -->
+  <div class="seccion" id="sec-exito">
+    <div class="reg-card">
+      <div class="exito-box">
+        <div class="exito-icon">🎉</div>
+        <div class="exito-titulo">¡Solicitud enviada!</div>
+        <div class="exito-texto">
+          Tu solicitud de registro fue recibida correctamente. ACCESVIAL la revisará y recibirás una respuesta en tu correo en menos de <strong>24 horas</strong>.
+        </div>
+        <div class="exito-datos" id="exito-resumen"></div>
+        <div class="exito-aviso">
+          ⏳ Una vez aprobado tendrás <strong>30 días gratis</strong> para usar TUNIM y ver el recaudo de tu vehículo en tiempo real.<br><br>
+          📱 Si tienes preguntas escríbenos al WhatsApp: <strong>573143039606</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Código de verificación — tú lo das al propietario por WhatsApp
+const CODIGOS_VALIDOS = ["TUNIM2026", "AUTOBOY26", "ACCESVIAL", "PILOT2026"];
+
+let datosForm = {};
+
+// ══ NAVEGACIÓN PASOS ══
+function irPaso1(){
+  activarSeccion("sec1");
+  actualizarPasos(1);
+}
+
+function irPaso2(){
+  // Validar paso 1
+  const nombres   = document.getElementById("reg-nombres").value.trim();
+  const apellidos = document.getElementById("reg-apellidos").value.trim();
+  const cedula    = document.getElementById("reg-cedula").value.trim();
+  const telefono  = document.getElementById("reg-telefono").value.trim();
+  const correo    = document.getElementById("reg-correo").value.trim();
+  const empresa   = document.getElementById("reg-empresa").value.trim();
+
+  let ok = true;
+  if(!nombres){ mostrarError("err-nombres","reg-nombres"); ok=false; }else ocultarError("err-nombres","reg-nombres");
+  if(!apellidos){ mostrarError("err-apellidos","reg-apellidos"); ok=false; }else ocultarError("err-apellidos","reg-apellidos");
+  if(!cedula||cedula.length<6){ mostrarError("err-cedula","reg-cedula"); ok=false; }else ocultarError("err-cedula","reg-cedula");
+  if(!telefono||telefono.length<10){ mostrarError("err-telefono","reg-telefono"); ok=false; }else ocultarError("err-telefono","reg-telefono");
+  if(!correo||!correo.includes("@")){ mostrarError("err-correo","reg-correo"); ok=false; }else ocultarError("err-correo","reg-correo");
+  if(!empresa){ mostrarError("err-empresa","reg-empresa"); ok=false; }else ocultarError("err-empresa","reg-empresa");
+
+  if(!ok){ toast("Completa todos los campos obligatorios","error"); return; }
+
+  datosForm = { ...datosForm, nombres, apellidos, cedula, telefono, correo, empresa };
+  activarSeccion("sec2");
+  actualizarPasos(2);
+}
+
+function irPaso3(){
+  const placa    = document.getElementById("reg-placa").value.trim();
+  const orden    = document.getElementById("reg-orden").value.trim();
+  const corredor = document.getElementById("reg-corredor").value;
+  const codigo   = document.getElementById("reg-codigo").value.trim().toUpperCase();
+  const marca    = document.getElementById("reg-marca").value.trim();
+  const modelo   = document.getElementById("reg-modelo").value.trim();
+
+  let ok = true;
+  if(!placa||placa.length<5){ mostrarError("err-placa","reg-placa"); ok=false; }else ocultarError("err-placa","reg-placa");
+  if(!orden){ mostrarError("err-orden","reg-orden"); ok=false; }else ocultarError("err-orden","reg-orden");
+  if(!corredor){ mostrarError("err-corredor","reg-corredor"); ok=false; }else ocultarError("err-corredor","reg-corredor");
+  if(!CODIGOS_VALIDOS.includes(codigo)){ mostrarError("err-codigo","reg-codigo"); ok=false; toast("Código de verificación incorrecto","error"); return; }else ocultarError("err-codigo","reg-codigo");
+
+  if(!ok){ toast("Completa todos los campos obligatorios","error"); return; }
+
+  datosForm = { ...datosForm, placa, orden, corredor, marca, modelo, codigo };
+
+  // Mostrar resumen
+  document.getElementById("resumen-datos").innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:4px">
+      <div style="font-size:0.58rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Resumen de tu solicitud</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${filaResumen("Propietario", datosForm.nombres+" "+datosForm.apellidos)}
+        ${filaResumen("Cédula", datosForm.cedula)}
+        ${filaResumen("Correo", datosForm.correo)}
+        ${filaResumen("Teléfono", datosForm.telefono)}
+        ${filaResumen("Empresa", datosForm.empresa)}
+        ${filaResumen("Placa", datosForm.placa)}
+        ${filaResumen("N° Orden", datosForm.orden)}
+        ${filaResumen("Corredor", datosForm.corredor)}
+        ${datosForm.marca?filaResumen("Vehículo", datosForm.marca+" "+datosForm.modelo):""}
+      </div>
+    </div>`;
+
+  activarSeccion("sec3");
+  actualizarPasos(3);
+}
+
+function filaResumen(lbl, val){
+  return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.78rem">
+    <span style="color:var(--muted)">${lbl}</span>
+    <span style="color:var(--text);font-weight:600;font-family:'JetBrains Mono',monospace;font-size:0.72rem">${val||"—"}</span>
+  </div>`;
+}
+
+function toggleEnviar(){
+  const acepto = document.getElementById("acepto-terminos").checked;
+  document.getElementById("btn-enviar").disabled = !acepto;
+}
+
+// ══ ENVIAR SOLICITUD ══
+async function enviarSolicitud(){
+  const btn = document.getElementById("btn-enviar");
+  btn.disabled = true;
+  btn.textContent = "ENVIANDO...";
+
+  try {
+    if(!window._fbReady || !window._fb){
+      throw new Error("Sin conexión. Intenta de nuevo en unos segundos.");
+    }
+
+    const {db, collection, addDoc, serverTimestamp} = window._fb;
+
+    // Guardar en Firebase
+    await addDoc(collection(db, "solicitudes_tunim"), {
+      nombres:    datosForm.nombres + " " + datosForm.apellidos,
+      cedula:     datosForm.cedula,
+      correo:     datosForm.correo,
+      telefono:   datosForm.telefono,
+      empresa:    datosForm.empresa,
+      placa:      datosForm.placa,
+      orden:      datosForm.orden,
+      corredor:   datosForm.corredor,
+      marca:      datosForm.marca||"",
+      modelo:     datosForm.modelo||"",
+      estado:     "pendiente",
+      planTunim:  "prueba",
+      esPrueba:   true,
+      totalPasajeros: 0,
+      totalRecaudo:   0,
+      diasUsando:     0,
+      fechaSolicitud: serverTimestamp()
+    });
+
+    // Notificar a ACCESVIAL
+    await emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+      fecha: new Date().toLocaleDateString("es-CO"),
+      placa: datosForm.placa,
+      reporte:
+        `NUEVA SOLICITUD TUNIM\n` +
+        `${"=".repeat(35)}\n` +
+        `Propietario: ${datosForm.nombres} ${datosForm.apellidos}\n` +
+        `Cédula: ${datosForm.cedula}\n` +
+        `Correo: ${datosForm.correo}\n` +
+        `Teléfono: ${datosForm.telefono}\n` +
+        `Empresa: ${datosForm.empresa}\n` +
+        `Placa: ${datosForm.placa}\n` +
+        `N° Orden: ${datosForm.orden}\n` +
+        `Corredor: ${datosForm.corredor}\n` +
+        `${"=".repeat(35)}\n` +
+        `Aprobar en: accesvialgerencia-afk.github.io/TUNIM/admin.html`
+    });
+
+    // Confirmar al propietario
+    emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+      fecha: new Date().toLocaleDateString("es-CO"),
+      placa: datosForm.placa,
+      reporte:
+        `Estimado/a ${datosForm.nombres},\n\n` +
+        `Recibimos tu solicitud de registro en TUNIM para el vehículo ${datosForm.placa}.\n\n` +
+        `En menos de 24 horas recibirás confirmación de aprobación.\n\n` +
+        `Una vez aprobado tendrás 30 días GRATIS para conocer TUNIM.\n\n` +
+        `Si tienes preguntas escríbenos al WhatsApp: 573143039606\n\n` +
+        `ACCESVIAL — TUNIM 2026`
+    }).catch(()=>{});
+
+    // Mostrar éxito
+    document.getElementById("exito-resumen").innerHTML =
+      filaResumen("Placa", datosForm.placa) +
+      filaResumen("Propietario", datosForm.nombres+" "+datosForm.apellidos) +
+      filaResumen("Correo", datosForm.correo) +
+      filaResumen("Estado", "⏳ Pendiente de aprobación");
+
+    activarSeccion("sec-exito");
+    actualizarPasos(4);
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = "📤 ENVIAR SOLICITUD";
+    toast(e.message||"Error al enviar. Intenta de nuevo.","error");
+  }
+}
+
+// ══ HELPERS UI ══
+function activarSeccion(id){
+  document.querySelectorAll(".seccion").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0,0);
+}
+
+function actualizarPasos(paso){
+  for(let i=1;i<=3;i++){
+    const el = document.getElementById("p"+i);
+    if(i<paso){ el.classList.add("completo"); el.classList.remove("activo"); el.textContent="✓"; }
+    else if(i===paso){ el.classList.add("activo"); el.classList.remove("completo"); el.textContent=i; }
+    else{ el.classList.remove("activo","completo"); el.textContent=i; }
+  }
+  for(let i=1;i<=2;i++){
+    const l = document.getElementById("linea"+i);
+    if(i<paso) l.classList.add("activa"); else l.classList.remove("activa");
+  }
+}
+
+function mostrarError(errId, inputId){
+  document.getElementById(errId).style.display="block";
+  document.getElementById(inputId).classList.add("error");
+}
+function ocultarError(errId, inputId){
+  document.getElementById(errId).style.display="none";
+  document.getElementById(inputId).classList.remove("error");
+}
+
+let toastT=null;
+function toast(msg,tipo=""){
+  const t=document.getElementById("toast");t.textContent=msg;
+  t.className="toast "+(tipo||"")+" show";
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),3000);
+}
+</script>
+</body>
+</html>
