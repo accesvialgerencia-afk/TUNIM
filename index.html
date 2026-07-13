@@ -831,12 +831,16 @@ function alEntrarGeocerca(geo, dist){
   } else if(geo.esDestino){
     hablar("Paradero INPEC. Destino final. Pasajeros de siete mil y ocho mil pesos, fin de su trayecto. Gracias por viajar con nosotros.", 0.9, 1.1);
     notificarDescensoMasivo(geo);
+    sonarAlarma("urgent");
   } else if(geo.esRutaEspecial){
     hablar("Zona Planadas. Tarifa única tres mil cuatrocientos pesos.", 0.9, 1.1);
   } else {
     const tarifaVoz = geo.tarifa ? geo.tarifa.toLocaleString("es-CO") : "";
     if(tarifaVoz){
-      hablar(geo.nombre + ". Fin del trayecto para pasajeros de " + tarifaVoz + " pesos.", 0.9, 1.1);
+      sonarAlarma("urgent");
+      setTimeout(()=>{
+        hablar("Señores pasajeros, proxima parada " + geo.nombre + ". Pasajeros con tiquete de " + tarifaVoz + " pesos, su destino ha llegado. Gracias por viajar con nosotros.", 0.9, 1.1);
+      }, 500);
     }
     notificarDescenso(geo);
   }
@@ -1304,14 +1308,16 @@ function inicializarVoz(){
 
 function hablar(texto, velocidad=0.9, tono=1.1){
   if(!window.speechSynthesis||!vozLista)return;
-  window.speechSynthesis.cancel();
+  // Cancelar solo si hay voz activa para no cortar música
+  if(window.speechSynthesis.speaking) window.speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(texto);
   if(vozSeleccionada)u.voice=vozSeleccionada;
   u.lang="es-CO";
   u.rate=velocidad;
   u.pitch=tono;
-  u.volume=1;
-  window.speechSynthesis.speak(u);
+  u.volume=0.9; // Volumen ligeramente reducido para coexistir con música
+  // Pequeño delay para que el sistema no interrumpa el audio en curso
+  setTimeout(()=>window.speechSynthesis.speak(u), 150);
 }
 
 // ══ VOZ AL PASAJERO SEGÚN TARIFA Y DESTINO ══
@@ -1725,6 +1731,14 @@ function renderTarifasAdmin(){
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
 inicializarVoz();
+// Activar GPS automáticamente después de configurar el turno
+setTimeout(()=>{
+  if(configTurno.placa && !gpsActivo){
+    iniciarGPS();
+    const btnGPS=document.getElementById("btnGPS");
+    if(btnGPS){btnGPS.textContent="🟢 GPS ON";btnGPS.style.color="var(--amarillo)";}
+  }
+},2000);
 // Saludo inicial motivador al abrir la app
 setTimeout(()=>{
   const hora=horaColombiaActual().getHours();
