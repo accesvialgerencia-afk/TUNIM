@@ -436,10 +436,10 @@ async function enviarSolicitud(){
     });
 
     // Notificar a ACCESVIAL
-    await emailjs.send("service_mext8fi","template_5dk2xxk",{
+    await emailjs.send("service_7k8ve4a","template_5dk2xxk",{
       fecha: new Date().toLocaleDateString("es-CO"),
       placa: datosForm.placa,
-      reporte: 
+      reporte:
         `NUEVA SOLICITUD TUNIM\n` +
         `${"=".repeat(35)}\n` +
         `Propietario: ${datosForm.nombres} ${datosForm.apellidos}\n` +
@@ -455,7 +455,7 @@ async function enviarSolicitud(){
     });
 
     // Confirmar al propietario
-    emailjs.send("service_mext8fi","template_5dk2xxk",{
+    emailjs.send("service_7k8ve4a","template_5dk2xxk",{
       fecha: new Date().toLocaleDateString("es-CO"),
       placa: datosForm.placa,
       reporte:
@@ -465,33 +465,24 @@ async function enviarSolicitud(){
         `Una vez aprobado tendrás 30 días GRATIS para conocer TUNIM.\n\n` +
         `Si tienes preguntas escríbenos al WhatsApp: 573143039606\n\n` +
         `ACCESVIAL — TUNIM 2026`
-    
-      }).catch(()=>{});
-  // Mostrar éxito
-  document.getElementById("exito-resumen").innerHTML =
-  filaResumen("Placa", datosForm.placa) +
-  filaResumen("Propietario", datosForm.nombres+" "+datosForm.apellidos) +
-  filaResumen("Correo", datosForm.correo) +
-  filaResumen("Estado", "⏳ Pendiente de aprobación");
+    }).catch(()=>{});
 
-activarSeccion("sec-exito");
-actualizarPasos(4);
-    
+    // Mostrar éxito
+    document.getElementById("exito-resumen").innerHTML =
+      filaResumen("Placa", datosForm.placa) +
+      filaResumen("Propietario", datosForm.nombres+" "+datosForm.apellidos) +
+      filaResumen("Correo", datosForm.correo) +
+      filaResumen("Estado", "⏳ Pendiente de aprobación");
+
+    activarSeccion("sec-exito");
+    actualizarPasos(4);
+
   } catch(e) {
-  console.error("ERROR COMPLETO:", e);
-
-  btn.disabled = false;
-  btn.textContent = "📤 ENVIAR SOLICITUD";
-
-  alert(
-    "ERROR:\n" +
-    (e?.message || JSON.stringify(e))
-  );
-
-  toast(e.message || "Error al enviar. Intenta de nuevo.","error");
+    btn.disabled = false;
+    btn.textContent = "📤 ENVIAR SOLICITUD";
+    toast(e.message||"Error al enviar. Intenta de nuevo.","error");
+  }
 }
-   
-
 
 // ══ HELPERS UI ══
 function activarSeccion(id){
