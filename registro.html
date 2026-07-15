@@ -466,23 +466,21 @@ async function enviarSolicitud(){
         `Si tienes preguntas escríbenos al WhatsApp: 573143039606\n\n` +
         `ACCESVIAL — TUNIM 2026`
     }).catch(()=>{});
+catch(e) {
+  console.error("ERROR COMPLETO:", e);
 
-    // Mostrar éxito
-    document.getElementById("exito-resumen").innerHTML =
-      filaResumen("Placa", datosForm.placa) +
-      filaResumen("Propietario", datosForm.nombres+" "+datosForm.apellidos) +
-      filaResumen("Correo", datosForm.correo) +
-      filaResumen("Estado", "⏳ Pendiente de aprobación");
+  btn.disabled = false;
+  btn.textContent = "📤 ENVIAR SOLICITUD";
 
-    activarSeccion("sec-exito");
-    actualizarPasos(4);
+  alert(
+    "ERROR:\n" +
+    (e?.message || JSON.stringify(e))
+  );
 
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = "📤 ENVIAR SOLICITUD";
-    toast(e.message||"Error al enviar. Intenta de nuevo.","error");
-  }
+  toast(e.message || "Error al enviar. Intenta de nuevo.","error");
 }
+   
+
 
 // ══ HELPERS UI ══
 function activarSeccion(id){
