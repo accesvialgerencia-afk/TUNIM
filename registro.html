@@ -455,18 +455,11 @@ async function enviarSolicitud(){
     });
 
     // Confirmar al propietario
-    emailjs.send("service_mext8fi","template_5dk2xxk",{
-      fecha: new Date().toLocaleDateString("es-CO"),
-      placa: datosForm.placa,
-      reporte:
-        `Estimado/a ${datosForm.nombres},\n\n` +
-        `Recibimos tu solicitud de registro en TUNIM para el vehículo ${datosForm.placa}.\n\n` +
-        `En menos de 24 horas recibirás confirmación de aprobación.\n\n` +
-        `Una vez aprobado tendrás 30 días GRATIS para conocer TUNIM.\n\n` +
-        `Si tienes preguntas escríbenos al WhatsApp: 573143039606\n\n` +
-        `ACCESVIAL — TUNIM 2026`
-    }).catch(()=>{});
-
+   emailjs.send("service_mext8fi","template_hulqh3l",{
+  placa: datosForm.placa,
+  propietario: datosForm.nombres + " " + datosForm.apellidos,
+  correo: datosForm.correo
+}).catch(()=>{}); 
     // Mostrar éxito
     document.getElementById("exito-resumen").innerHTML =
       filaResumen("Placa", datosForm.placa) +
