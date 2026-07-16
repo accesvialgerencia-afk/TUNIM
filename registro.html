@@ -477,11 +477,19 @@ async function enviarSolicitud(){
     activarSeccion("sec-exito");
     actualizarPasos(4);
 
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = "📤 ENVIAR SOLICITUD";
-    toast(e.message||"Error al enviar. Intenta de nuevo.","error");
-  }
+} catch(e) {
+  console.error("ERROR COMPLETO:", e);
+
+  alert(
+    "ERROR:\n" +
+    (e?.message || JSON.stringify(e))
+  );
+
+  btn.disabled = false;
+  btn.textContent = "📤 ENVIAR SOLICITUD";
+
+  toast(e.message || "Error al enviar. Intenta de nuevo.","error");
+}
 }
 
 // ══ HELPERS UI ══
