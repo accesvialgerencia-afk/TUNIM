@@ -769,8 +769,15 @@ function iniciarGPS(){
       verificarGeocercas(posicionActual);
     },
     (err) => {
-      console.warn("GPS error:", err);
-      setSyncStatus("offline");
+      let msg = "GPS: señal débil";
+      if(err.code === 1) msg = "GPS: activa permisos de ubicación";
+      else if(err.code === 2) msg = "GPS: señal no disponible";
+      else if(err.code === 3) msg = "GPS: reintentando...";
+      console.warn("GPS:", msg, err.code);
+      mostrarToast("📍 " + msg, "warn");
+      if(err.code === 3 && gpsActivo){
+        setTimeout(()=>{ if(gpsActivo){ detenerGPS(); iniciarGPS(); }}, 5000);
+      }
     },
     {
       enableHighAccuracy: true,
@@ -792,6 +799,7 @@ function detenerGPS(){
 
 // Verificar en qué geocercas está el bus
 function verificarGeocercas(pos){
+  detectarDireccion(pos.lat);
   GEOCERCAS.forEach(geo => {
     const dist = calcularDistancia(pos.lat, pos.lng, geo.lat, geo.lng);
     const dentroAhora = dist <= geo.radio;
@@ -965,7 +973,7 @@ function cargarConfig(){
   return {placa:"", fechaInicio:"", horaInicio:""};
 }
 
-function guardarConfigTurno(){
+async function guardarConfigTurno(){
   const placa=document.getElementById("inputPlaca").value.trim().toUpperCase();
   const fecha=document.getElementById("inputFecha").value;
   const hora=document.getElementById("inputHoraInicio").value;
@@ -975,8 +983,37 @@ function guardarConfigTurno(){
   try{localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno));}catch(e){}
   document.getElementById("modalConfig").style.display="none";
   actualizarBarraVehiculo();
+  mostrarToast("🔄 Buscando turno activo...","");
+  await cargarTurnoDesdeFirebase(placa, fecha);
   sincronizarConfigFirebase();
-  mostrarToast("✅ Turno configurado","");
+}
+
+async function cargarTurnoDesdeFirebase(placa, fecha){
+  if(!window._fbReady||!window._fb) return;
+  try{
+    const {db,doc,getDoc}=window._fb;
+    const snap=await getDoc(doc(db,"turnos_activos",placa+"_"+fecha));
+    if(snap.exists()){
+      const data=snap.data();
+      if(data.conteos&&data.conteos.length===RUTAS.length){
+        estado.conteos=data.conteos;
+        estado.conteosViaje=data.conteosViaje||[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
+        estado.historial=data.historial||[];
+        estado.diaActual=fecha;
+        viajeActual=data.viajeActual||1;
+        guardarEstado();
+        actualizarUI();
+        setViaje(viajeActual);
+        mostrarToast("✅ Turno restaurado desde la nube","");
+        hablar("Turno restaurado. Bienvenido de nuevo.",0.9,1.1);
+        return;
+      }
+    }
+    mostrarToast("✅ Nuevo turno iniciado","");
+  }catch(e){
+    console.warn("Error cargando turno:",e);
+    mostrarToast("✅ Turno configurado","");
+  }
 }
 
 function editarConfig(){
@@ -1021,11 +1058,22 @@ async function sincronizarConfigFirebase(){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    await setDoc(doc(db,"turnos",configTurno.placa+"_"+configTurno.fechaInicio),{
-      placa: configTurno.placa,
-      fechaInicio: configTurno.fechaInicio,
-      horaInicio: configTurno.horaInicio,
-      actualizadoEn: serverTimestamp()
+    const key=configTurno.placa+"_"+configTurno.fechaInicio;
+    await setDoc(doc(db,"turnos",key),{
+      placa:configTurno.placa,fechaInicio:configTurno.fechaInicio,
+      horaInicio:configTurno.horaInicio,actualizadoEn:serverTimestamp()
+    },{merge:true});
+    // Guardar estado completo para sincronizar entre dispositivos
+    await setDoc(doc(db,"turnos_activos",key),{
+      placa:configTurno.placa,fecha:configTurno.fechaInicio,
+      horaInicio:configTurno.horaInicio,
+      conteos:estado.conteos,
+      conteosViaje:estado.conteosViaje,
+      historial:estado.historial.slice(0,50),
+      viajeActual:viajeActual,
+      totalPasajeros:estado.conteos.reduce((a,b)=>a+b,0),
+      totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      actualizadoEn:serverTimestamp()
     },{merge:true});
     setSyncStatus("ok");
   }catch(e){
@@ -1308,32 +1356,63 @@ function inicializarVoz(){
 
 function hablar(texto, velocidad=0.9, tono=1.1){
   if(!window.speechSynthesis||!vozLista)return;
-  // Cancelar solo si hay voz activa para no cortar música
-  if(window.speechSynthesis.speaking) window.speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(texto);
   if(vozSeleccionada)u.voice=vozSeleccionada;
   u.lang="es-CO";
   u.rate=velocidad;
   u.pitch=tono;
-  u.volume=0.9; // Volumen ligeramente reducido para coexistir con música
-  // Pequeño delay para que el sistema no interrumpa el audio en curso
-  setTimeout(()=>window.speechSynthesis.speak(u), 150);
+  u.volume=0.85;
+  // NO cancelar speechSynthesis — evita interrumpir música de otras apps
+  if(window.speechSynthesis.speaking){
+    // Esperar que termine la voz actual antes de hablar
+    setTimeout(()=>window.speechSynthesis.speak(u), 900);
+  } else {
+    setTimeout(()=>window.speechSynthesis.speak(u), 150);
+  }
 }
 
-// ══ VOZ AL PASAJERO SEGÚN TARIFA Y DESTINO ══
-const VOZ_DESTINOS = {
+// ══ VOZ AL PASAJERO SEGÚN TARIFA Y DIRECCIÓN ══
+let direccionRuta = "ida"; // "ida"=Soacha→Funza | "vuelta"=Funza→Soacha
+let ultimaLatitud = null;
+
+function detectarDireccion(lat){
+  if(ultimaLatitud === null){ ultimaLatitud = lat; return; }
+  const diff = lat - ultimaLatitud;
+  if(Math.abs(diff) > 0.0015){
+    const nueva = diff > 0 ? "ida" : "vuelta";
+    if(nueva !== direccionRuta){
+      direccionRuta = nueva;
+      mostrarToast(direccionRuta==="ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha", "");
+    }
+  }
+  ultimaLatitud = lat;
+}
+
+const VOZ_DESTINOS_IDA = {
   2300: "Bienvenido. Su destino es Bosa Estación. Que tenga buen viaje.",
   3300: "Bienvenido. Su destino es Avenida Villavicencio con Primera de Mayo. Que tenga buen viaje.",
   3700: "Bienvenido. Su tiquete cubre hasta cualquier punto de Bogotá antes del Río Bogotá. Que tenga buen viaje.",
   6200: "Bienvenido. Su destino es Fontibón, Calle trece. Que tenga buen viaje.",
   7000: "Bienvenido. Su destino es Funza o Mosquera, saliendo desde Bogotá. Que tenga buen viaje.",
-  8000: "Bienvenido. Su destino es Funza o Mosquera. Que tenga buen viaje.",
+  8000: "Bienvenido. Su destino es Funza o Mosquera desde Soacha. Que tenga buen viaje.",
   3000: "Bienvenido. Su destino es Funza o Mosquera desde el Río Bogotá. Que tenga buen viaje.",
   3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
 };
 
+const VOZ_DESTINOS_VUELTA = {
+  2300: "Bienvenido. Su destino es Bosa Estación viniendo desde Funza. Que tenga buen viaje.",
+  3300: "Bienvenido. Su destino es Avenida Villavicencio con Primera de Mayo. Que tenga buen viaje.",
+  3700: "Bienvenido. Su tiquete cubre desde el Río Bogotá hasta Soacha o Bogotá. Que tenga buen viaje.",
+  6200: "Bienvenido. Su destino es Fontibón, Calle trece, viniendo desde Funza. Que tenga buen viaje.",
+  7000: "Bienvenido. Su destino es Bogotá desde Funza o Mosquera. Que tenga buen viaje.",
+  8000: "Bienvenido. Su destino es Soacha desde Funza o Mosquera. Que tenga buen viaje.",
+  3000: "Bienvenido. Su destino está en Bogotá después del Río Bogotá. Que tenga buen viaje.",
+  3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
+};
+
 function vozPagoRegistrado(precio){
-  const msg = VOZ_DESTINOS[precio] || "Bienvenido. Pago registrado. Que tenga buen viaje.";
+  const tabla = direccionRuta === "vuelta" ? VOZ_DESTINOS_VUELTA : VOZ_DESTINOS_IDA;
+  const msg = tabla[precio] || "Bienvenido. Pago registrado. Que tenga buen viaje.";
   setTimeout(()=>hablar(msg, 0.92, 1.08), 300);
 }
 
