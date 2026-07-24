@@ -352,6 +352,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   </div>
   <button class="vbar-edit" onclick="editarConfig()">✏ Editar</button>
   <button id="btnGPS" class="vbar-edit" onclick="toggleGPS()" style="background:rgba(0,214,143,0.1);border-color:rgba(0,214,143,0.3);color:var(--verde)">📍 GPS</button>
+  <button id="btnDireccion" class="vbar-edit" onclick="cambiarDireccionManual()" style="background:rgba(77,184,255,0.1);border-color:rgba(77,184,255,0.3);color:var(--azul-claro)">🚌 IDA</button>
 </div>
 
 <!-- VIAJE ACTUAL -->
@@ -824,39 +825,49 @@ function verificarGeocercas(pos){
 }
 
 // Acciones al entrar a una geocerca
-function alEntrarGeocerca(geo, dist){
-  console.log("Entrando a geocerca:", geo.codigo, geo.nombre);
+// Voces cortas por geocerca según dirección
+const VOZ_GEO = {
+  "G1_ida":    "Inicio de ruta. Soacha hacia Funza.",
+  "G2_ida":    "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
+  "G3_ida":    "Avenida Villavicencio. Tiquetes de tres mil trescientos, su parada.",
+  "G4_ida":    "Río Bogotá. Tiquetes de tres mil setecientos, su parada.",
+  "G5_ida":    "Peaje Calle trece. Verifiquen tiquetes de siete u ocho mil.",
+  "G6_ida":    "Paradero INPEC. Destino final. Gracias por viajar.",
+  "G7_ida":    "Fontibón. Tiquetes de seis mil doscientos, su parada.",
+  "G6_vuelta": "Salida desde Funza hacia Bogotá y Soacha.",
+  "G5_vuelta": "Peaje Calle trece. Verifiquen tiquetes.",
+  "G4_vuelta": "Río Bogotá. Tiquetes de tres mil setecientos, su parada.",
+  "G7_vuelta": "Fontibón. Tiquetes de seis mil doscientos, su parada.",
+  "G3_vuelta": "Avenida Villavicencio. Tiquetes de tres mil trescientos, su parada.",
+  "G2_vuelta": "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
+  "G1_vuelta": "Llegamos a Soacha. Destino final. Hasta pronto.",
+  "G8_ida":    "Zona Planadas. Tarifa única tres mil cuatrocientos.",
+  "G8_vuelta": "Zona Planadas. Tarifa única tres mil cuatrocientos.",
+};
 
-  // Anuncio de voz
-  if(geo.esOrigen){
-    hablar("Inicio de ruta registrado. " + geo.nombre, 0.9, 1.1);
-  } else if(geo.esFrontera){
-    hablar("Punto frontera: " + geo.nombre + ". Tarifa tres mil setecientos pesos.", 0.9, 1.1);
-    verificarPasajerosEnFrontera(geo);
-  } else if(geo.esValidacion){
-    hablar("Peaje Calle trece. Pasajeros deben haber pagado siete mil o ocho mil pesos.", 0.9, 1.1);
-    verificarPasajerosValidacion(geo);
-  } else if(geo.esDestino){
-    hablar("Paradero INPEC. Destino final. Pasajeros de siete mil y ocho mil pesos, fin de su trayecto. Gracias por viajar con nosotros.", 0.9, 1.1);
-    notificarDescensoMasivo(geo);
-    sonarAlarma("urgent");
-  } else if(geo.esRutaEspecial){
-    hablar("Zona Planadas. Tarifa única tres mil cuatrocientos pesos.", 0.9, 1.1);
-  } else {
-    const tarifaVoz = geo.tarifa ? geo.tarifa.toLocaleString("es-CO") : "";
-    if(tarifaVoz){
-      sonarAlarma("urgent");
-      setTimeout(()=>{
-        hablar("Señores pasajeros, proxima parada " + geo.nombre + ". Pasajeros con tiquete de " + tarifaVoz + " pesos, su destino ha llegado. Gracias por viajar con nosotros.", 0.9, 1.1);
-      }, 500);
-    }
+function alEntrarGeocerca(geo, dist){
+  console.log("Geocerca:", geo.codigo, "| Dirección:", direccionRuta);
+
+  const claveVoz = geo.codigo + "_" + direccionRuta;
+  const vozMsg = VOZ_GEO[claveVoz];
+
+  sonarAlarma("medium");
+  if(vozMsg){
+    setTimeout(()=>hablar(vozMsg, 1.0, 1.1), 400);
+  }
+
+  // Acciones especiales según geocerca
+  if(geo.esFrontera)    verificarPasajerosEnFrontera(geo);
+  if(geo.esValidacion)  verificarPasajerosValidacion(geo);
+  if(geo.esDestino && direccionRuta==="ida") notificarDescensoMasivo(geo);
+  if(geo.codigo==="G1" && direccionRuta==="vuelta") notificarDescensoMasivo(geo);
+
+  // Notificar descenso para geocercas con tarifa
+  if(!geo.esDestino && !geo.esOrigen && !geo.esValidacion){
     notificarDescenso(geo);
   }
 
-  // Toast visual
-  mostrarToast("📍 " + geo.nombre + " — " + geo.codigo, "");
-
-  // Guardar en Firebase
+  mostrarToast("📍 " + geo.nombre, "");
   guardarEventoGeocercaFirebase(geo, dist);
 }
 
@@ -871,8 +882,8 @@ function alertaProximaGeocerca(geo, dist){
     ).length;
     if(pasajerosAfectados > 0){
       setTimeout(()=>{
-        hablar("Próxima parada: " + geo.nombre + ". " + pasajerosAfectados + " pasajeros deben descender.", 0.9, 1.1);
-      }, 0);
+        hablar(geo.nombre + ". Próxima parada.", 1.0, 1.1);
+      }, 500);
     }
     setTimeout(()=> alertasProximidad.delete(key), 60000);
   }
@@ -1124,6 +1135,21 @@ function setSyncStatus(estado){
   else{p.className="sync-pill offline";p.textContent="⚡ LOCAL";}
 }
 
+// Ping silencioso cada 30 segundos para mantener SYNC activo
+async function pingFirebase(){
+  if(!fbListo||!window._fb||!configTurno.placa) return;
+  try{
+    const {db,doc,setDoc,serverTimestamp}=window._fb;
+    await setDoc(doc(db,"turnos",configTurno.placa+"_"+configTurno.fechaInicio),{
+      ultimoPing: serverTimestamp()
+    },{merge:true});
+    setSyncStatus("ok");
+  }catch(e){
+    setSyncStatus("offline");
+  }
+}
+setInterval(pingFirebase, 30000);
+
 // ══ ESTADO ══
 let estado=cargarEstado();
 let viajeActual=estado.viajeActual||1;
@@ -1373,19 +1399,42 @@ function hablar(texto, velocidad=0.9, tono=1.1){
 
 // ══ VOZ AL PASAJERO SEGÚN TARIFA Y DIRECCIÓN ══
 let direccionRuta = "ida"; // "ida"=Soacha→Funza | "vuelta"=Funza→Soacha
-let ultimaLatitud = null;
+let historialLatitudes = [];
+const MAX_HIST_LAT = 10;
 
 function detectarDireccion(lat){
-  if(ultimaLatitud === null){ ultimaLatitud = lat; return; }
-  const diff = lat - ultimaLatitud;
-  if(Math.abs(diff) > 0.0015){
+  historialLatitudes.push(lat);
+  if(historialLatitudes.length > MAX_HIST_LAT){
+    historialLatitudes.shift();
+  }
+  if(historialLatitudes.length < 4) return;
+  // Comparar promedio de últimas 2 vs primeras 2 del historial
+  const antiguas = (historialLatitudes[0] + historialLatitudes[1]) / 2;
+  const recientes = (historialLatitudes[historialLatitudes.length-1] + historialLatitudes[historialLatitudes.length-2]) / 2;
+  const diff = recientes - antiguas;
+  if(Math.abs(diff) > 0.0008){
+    // diff > 0 = latitud aumentando = moviendo hacia norte = Funza
+    // diff < 0 = latitud disminuyendo = moviendo hacia sur = Soacha
     const nueva = diff > 0 ? "ida" : "vuelta";
     if(nueva !== direccionRuta){
       direccionRuta = nueva;
-      mostrarToast(direccionRuta==="ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha", "");
+      const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
+      mostrarToast(msg, "");
+      console.log("Dirección detectada:", direccionRuta, "diff:", diff.toFixed(6));
     }
   }
-  ultimaLatitud = lat;
+}
+
+// Permite al conductor cambiar dirección manualmente si GPS no la detecta
+function cambiarDireccionManual(){
+  direccionRuta = direccionRuta === "ida" ? "vuelta" : "ida";
+  historialLatitudes = [];
+  const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
+  mostrarToast(msg, "");
+  hablar(direccionRuta === "ida" ? "Modo ida" : "Modo vuelta, Funza hacia Soacha", 1.0, 1.1);
+  // Actualizar botón
+  const btn = document.getElementById("btnDireccion");
+  if(btn) btn.textContent = direccionRuta === "ida" ? "🚌 IDA" : "🚌 VUELTA";
 }
 
 const VOZ_DESTINOS_IDA = {
@@ -1410,10 +1459,22 @@ const VOZ_DESTINOS_VUELTA = {
   3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
 };
 
+// ══ DEBOUNCE DE VOZ — 5 segundos desde último pasajero ══
+let vozDebounceTimer = null;
+let ultimoPrecioVoz = null;
+let contadorDebounce = 0;
+
 function vozPagoRegistrado(precio){
-  const tabla = direccionRuta === "vuelta" ? VOZ_DESTINOS_VUELTA : VOZ_DESTINOS_IDA;
-  const msg = tabla[precio] || "Bienvenido. Pago registrado. Que tenga buen viaje.";
-  setTimeout(()=>hablar(msg, 0.92, 1.08), 300);
+  ultimoPrecioVoz = precio;
+  contadorDebounce++;
+  const numActual = contadorDebounce;
+  clearTimeout(vozDebounceTimer);
+  vozDebounceTimer = setTimeout(()=>{
+    if(numActual === contadorDebounce){
+      // Solo anunciar si no llegó otro pasajero en 5 segundos
+      hablar("Bienvenido, buen viaje", 1.0, 1.1);
+    }
+  }, 5000);
 }
 
 // Mensajes al cambiar de viaje
