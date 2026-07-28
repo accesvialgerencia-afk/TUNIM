@@ -999,8 +999,23 @@ async function guardarConfigTurno(){
   sincronizarConfigFirebase();
 }
 
+// Esperar a que Firebase esté listo con timeout de 8 segundos
+function esperarFirebase(timeout=8000){
+  return new Promise((resolve)=>{
+    if(window._fbReady){ resolve(true); return; }
+    const t = setTimeout(()=>resolve(false), timeout);
+    window.addEventListener("fbReady", ()=>{ clearTimeout(t); resolve(true); }, {once:true});
+  });
+}
+
 async function cargarTurnoDesdeFirebase(placa, fecha){
-  if(!window._fbReady||!window._fb) return;
+  mostrarToast("🔄 Conectando con la nube...","");
+  // Esperar Firebase hasta 8 segundos
+  const listo = await esperarFirebase(8000);
+  if(!listo || !window._fb){
+    mostrarToast("⚡ Sin conexión — turno local","warn");
+    return;
+  }
   try{
     const {db,doc,getDoc}=window._fb;
     const snap=await getDoc(doc(db,"turnos_activos",placa+"_"+fecha));
@@ -1628,6 +1643,20 @@ function registrar(idx){
   vozPagoRegistrado(ruta.precio);
   actualizarUI();
   guardarPasajeroFirebase(reg);
+  // Actualizar estado en turnos_activos para sincronización entre dispositivos
+  if(fbListo && window._fb && configTurno.placa){
+    const {db,doc,setDoc,serverTimestamp}=window._fb;
+    const key=configTurno.placa+"_"+configTurno.fechaInicio;
+    setDoc(doc(db,"turnos_activos",key),{
+      conteos: estado.conteos,
+      conteosViaje: estado.conteosViaje,
+      historial: estado.historial.slice(0,50),
+      viajeActual: viajeActual,
+      totalPasajeros: estado.conteos.reduce((a,b)=>a+b,0),
+      totalRecaudo: estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      actualizadoEn: serverTimestamp()
+    },{merge:true}).catch(e=>console.warn("Sync turno:",e));
+  }
 }
 
 function mostrarConfirmacion(nombre,precio,num){
