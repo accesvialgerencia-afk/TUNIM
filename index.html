@@ -1014,34 +1014,43 @@ function esperarFirebase(timeout=8000){
 
 async function cargarTurnoDesdeFirebase(placa, fecha){
   mostrarToast("🔄 Conectando con la nube...","");
-  // Esperar Firebase hasta 8 segundos
-  const listo = await esperarFirebase(8000);
+  // Esperar Firebase hasta 10 segundos
+  const listo = await esperarFirebase(10000);
   if(!listo || !window._fb){
     mostrarToast("⚡ Sin conexión — turno local","warn");
     return;
   }
   try{
-    const {db,doc,getDoc}=window._fb;
-    const snap=await getDoc(doc(db,"turnos_activos",placa+"_"+fecha));
+    // Usar funciones Firebase directamente del módulo global
+    const db = window._fb.db;
+    const docRef = window._fb.doc(db, "turnos_activos", placa + "_" + fecha);
+    const snap = await window._fb.getDoc(docRef);
+
     if(snap.exists()){
-      const data=snap.data();
-      if(data.conteos&&data.conteos.length===RUTAS.length){
-        estado.conteos=data.conteos;
-        estado.conteosViaje=data.conteosViaje||[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
-        estado.historial=data.historial||[];
-        estado.diaActual=fecha;
-        viajeActual=data.viajeActual||1;
+      const data = snap.data();
+      console.log("Turno encontrado en Firebase:", data);
+
+      if(data.conteos && data.conteos.length === RUTAS.length){
+        estado.conteos = data.conteos;
+        estado.conteosViaje = data.conteosViaje || [
+          new Array(RUTAS.length).fill(0),
+          new Array(RUTAS.length).fill(0),
+          new Array(RUTAS.length).fill(0)
+        ];
+        estado.historial = data.historial || [];
+        estado.diaActual = fecha;
+        viajeActual = data.viajeActual || 1;
         guardarEstado();
         actualizarUI();
         setViaje(viajeActual);
-        mostrarToast("✅ Turno restaurado desde la nube","");
-        hablar("Turno restaurado. Bienvenido de nuevo.",0.9,1.1);
+        mostrarToast("✅ Turno restaurado — " + (data.totalPasajeros||0) + " pax","");
         return;
       }
     }
+    console.log("No hay turno activo para:", placa + "_" + fecha);
     mostrarToast("✅ Nuevo turno iniciado","");
   }catch(e){
-    console.warn("Error cargando turno:",e);
+    console.warn("Error cargando turno:", e);
     mostrarToast("✅ Turno configurado","");
   }
 }
