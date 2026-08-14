@@ -311,6 +311,10 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <div class="modal-sub">CONFIGURACIÓN DE TURNO · ACCESVIAL 2026</div>
     <label class="modal-label">Placa del vehículo</label>
     <input class="modal-input" id="inputPlaca" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+    <label class="modal-label">Cédula del conductor *</label>
+    <input class="modal-input" id="inputCedula" type="number" placeholder="12345678" autocomplete="off" style="letter-spacing:2px">
+    <label class="modal-label">Nombre del conductor (opcional)</label>
+    <input class="modal-input" id="inputNombreConductor" type="text" placeholder="Juan Piravague" autocomplete="off" style="text-transform:capitalize;letter-spacing:0">
     <label class="modal-label">Fecha de inicio de ruta</label>
     <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
     <label class="modal-label">Hora de inicio</label>
@@ -349,6 +353,9 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   <div style="text-align:center">
     <div class="vbar-inicio">Inicio: <span id="vbarFecha">—</span></div>
     <div class="vbar-inicio">Hora: <span id="vbarHora">—</span></div>
+    <div class="vbar-inicio" id="vbarCedula" style="color:var(--verde);font-size:0.5rem;letter-spacing:1px"></div>
+    <div class="vbar-inicio" id="vbarNombre" style="color:var(--muted2);font-size:0.5rem"></div>
+    <div id="vbarIdTurno" style="font-size:0.38rem;color:var(--border2);font-family:'JetBrains Mono',monospace;text-align:center;padding:0 4px"></div>
   </div>
   <button class="vbar-edit" onclick="editarConfig()">✏ Editar</button>
   <button id="btnGPS" class="vbar-edit" onclick="toggleGPS()" style="background:rgba(0,214,143,0.1);border-color:rgba(0,214,143,0.3);color:var(--verde)">📍 GPS</button>
@@ -660,6 +667,17 @@ const META_MIN=28, MULTA1=10000, MULTAN=5000;
 const STORAGE_KEY="tunim_v3";
 const HIST_KEY="tunim_hist_v3";
 const CONFIG_KEY="tunim_config_v1";
+
+// ══ idTurno — CORAZÓN DE LA ARQUITECTURA TUNIM ══
+// Formato: TUN-{fecha}-{placa sin guión}-{cédula}
+// Ejemplo: TUN-20260806-TAL866-12345678
+// Relaciona: turnos · pasajeros · liquidaciones · auditorías · IA
+function generarIdTurno(placa, cedula, fecha){
+  const p = placa.replace(/[^A-Z0-9]/g,"");
+  const f = fecha.replace(/-/g,"");
+  const c = (cedula||"0").toString().replace(/[^0-9]/g,"");
+  return "TUN-"+f+"-"+p+"-"+c;
+}
 
 // ══ GEOCERCAS DEL CORREDOR — ACCESVIAL 2026 ══
 // Coordenadas validadas en ruta real por ACCESVIAL
@@ -989,17 +1007,34 @@ function cargarConfig(){
 }
 
 async function guardarConfigTurno(){
-  const placa=document.getElementById("inputPlaca").value.trim().toUpperCase();
-  const fecha=document.getElementById("inputFecha").value;
-  const hora=document.getElementById("inputHoraInicio").value;
-  if(!placa){mostrarToast("⚠ Ingresa la placa","alerta");return;}
-  if(!fecha){mostrarToast("⚠ Selecciona la fecha","alerta");return;}
-  configTurno={placa, fechaInicio:fecha, horaInicio:hora||"--:--"};
-  try{localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno));}catch(e){}
+  const placa  = document.getElementById("inputPlaca").value.trim().toUpperCase();
+  const cedula = document.getElementById("inputCedula").value.trim();
+  const nombre = document.getElementById("inputNombreConductor").value.trim();
+  const fecha  = document.getElementById("inputFecha").value;
+  const hora   = document.getElementById("inputHoraInicio").value;
+  if(!placa) { mostrarToast("⚠ Ingresa la placa","alerta"); return; }
+  if(!cedula){ mostrarToast("⚠ La cédula es obligatoria","alerta"); return; }
+  if(!fecha) { mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
+
+  // Generar idTurno — llave principal de toda la arquitectura
+  const idTurno = generarIdTurno(placa, cedula, fecha);
+  configTurno = {
+    idTurno,
+    placa,
+    cedula,
+    nombreConductor:   nombre||"",
+    fechaInicio:       fecha,
+    horaInicio:        hora||"--:--",
+    estadoTurno:       "Activo",
+    corredor:          "Funza-Mosquera-Bogotá-Soacha",
+    empresa:           "Autoboy",
+    viajesCompletados: 0
+  };
+  try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
   document.getElementById("modalConfig").style.display="none";
   actualizarBarraVehiculo();
   mostrarToast("🔄 Buscando turno activo...","");
-  await cargarTurnoDesdeFirebase(placa, fecha);
+  await cargarTurnoDesdeFirebase(placa, fecha, cedula);
   sincronizarConfigFirebase();
 }
 
@@ -1012,52 +1047,52 @@ function esperarFirebase(timeout=8000){
   });
 }
 
-async function cargarTurnoDesdeFirebase(placa, fecha){
+async function cargarTurnoDesdeFirebase(placa, fecha, cedula=""){
   mostrarToast("🔄 Conectando con la nube...","");
-  // Esperar Firebase hasta 10 segundos
   const listo = await esperarFirebase(10000);
-  if(!listo || !window._fb){
-    mostrarToast("⚡ Sin conexión — turno local","warn");
-    return;
-  }
+  if(!listo||!window._fb){ mostrarToast("⚡ Sin conexión — turno local","warn"); return; }
   try{
-    // Usar funciones Firebase directamente del módulo global
     const db = window._fb.db;
-    const docRef = window._fb.doc(db, "turnos_activos", placa + "_" + fecha);
-    const snap = await window._fb.getDoc(docRef);
-
+    // Buscar por idTurno — corazón de la arquitectura
+    const idTurno = generarIdTurno(placa, cedula||"0", fecha);
+    console.log("🔍 Buscando turno:", idTurno);
+    const snap = await window._fb.getDoc(window._fb.doc(db,"turnos_activos",idTurno));
     if(snap.exists()){
-      const data = snap.data();
-      console.log("Turno encontrado en Firebase:", data);
-
-      if(data.conteos && data.conteos.length === RUTAS.length){
-        estado.conteos = data.conteos;
-        estado.conteosViaje = data.conteosViaje || [
+      const data=snap.data();
+      if(data.conteos&&data.conteos.length===RUTAS.length){
+        estado.conteos=data.conteos;
+        estado.conteosViaje=data.conteosViaje||[
           new Array(RUTAS.length).fill(0),
           new Array(RUTAS.length).fill(0),
           new Array(RUTAS.length).fill(0)
         ];
-        estado.historial = data.historial || [];
-        estado.diaActual = fecha;
-        viajeActual = data.viajeActual || 1;
+        estado.historial=data.historial||[];
+        estado.diaActual=fecha;
+        viajeActual=data.viajeActual||1;
+        if(configTurno) configTurno.idTurno=idTurno;
         guardarEstado();
         actualizarUI();
         setViaje(viajeActual);
-        mostrarToast("✅ Turno restaurado — " + (data.totalPasajeros||0) + " pax","");
+        const pax=data.totalPasajeros||0;
+        const rec=data.totalRecaudo||0;
+        mostrarToast("✅ Turno restaurado — "+pax+" pax · $"+Math.round(rec/1000)+"k","");
         return;
       }
     }
-    console.log("No hay turno activo para:", placa + "_" + fecha);
+    if(configTurno) configTurno.idTurno=idTurno;
+    console.log("🆕 Nuevo turno:", idTurno);
     mostrarToast("✅ Nuevo turno iniciado","");
   }catch(e){
-    console.warn("Error cargando turno:", e);
-    mostrarToast("✅ Turno configurado","");
+    console.warn("Error cargando turno:",e);
+    mostrarToast("⚡ Turno en modo local","warn");
   }
 }
 
 function editarConfig(){
   const m=document.getElementById("modalConfig");
   document.getElementById("inputPlaca").value=configTurno.placa||"";
+  document.getElementById("inputCedula").value=configTurno.cedula||"";
+  document.getElementById("inputNombreConductor").value=configTurno.nombreConductor||"";
   document.getElementById("inputFecha").value=configTurno.fechaInicio||"";
   document.getElementById("inputHoraInicio").value=configTurno.horaInicio||"";
   m.style.display="flex";
@@ -1074,6 +1109,12 @@ function actualizarBarraVehiculo(){
     document.getElementById("vbarFecha").textContent="—";
   }
   document.getElementById("vbarHora").textContent=configTurno.horaInicio||"—";
+  const vCed=document.getElementById("vbarCedula");
+  if(vCed) vCed.textContent=configTurno.cedula?"CC: "+configTurno.cedula:"";
+  const vNom=document.getElementById("vbarNombre");
+  if(vNom) vNom.textContent=configTurno.nombreConductor||"";
+  const vId=document.getElementById("vbarIdTurno");
+  if(vId && configTurno.idTurno) vId.textContent=configTurno.idTurno;
 }
 
 // Mostrar modal si no hay config, si no ir directo
@@ -1097,22 +1138,43 @@ async function sincronizarConfigFirebase(){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const key=configTurno.placa+"_"+configTurno.fechaInicio;
+    const idTurno=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
+    const key=idTurno; // idTurno es la llave principal
     await setDoc(doc(db,"turnos",key),{
-      placa:configTurno.placa,fechaInicio:configTurno.fechaInicio,
-      horaInicio:configTurno.horaInicio,actualizadoEn:serverTimestamp()
+      idTurno,
+      placa:             configTurno.placa,
+      cedulaConductor:   configTurno.cedula||"",
+      nombreConductor:   configTurno.nombreConductor||"",
+      empresa:           configTurno.empresa||"Autoboy",
+      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fechaInicio:       configTurno.fechaInicio,
+      horaInicio:        configTurno.horaInicio,
+      fechaFin:          null,
+      estadoTurno:       "Activo",
+      viajesCompletados: viajeActual,
+      produccion:        estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      pasajeros:         estado.conteos.reduce((a,b)=>a+b,0),
+      ultimaActualizacion: serverTimestamp()
     },{merge:true});
     // Guardar estado completo para sincronizar entre dispositivos
     await setDoc(doc(db,"turnos_activos",key),{
-      placa:configTurno.placa,fecha:configTurno.fechaInicio,
-      horaInicio:configTurno.horaInicio,
-      conteos:estado.conteos,
-      conteosViaje:estado.conteosViaje,
-      historial:estado.historial.slice(0,50),
-      viajeActual:viajeActual,
-      totalPasajeros:estado.conteos.reduce((a,b)=>a+b,0),
-      totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
-      actualizadoEn:serverTimestamp()
+      idTurno,
+      placa:             configTurno.placa,
+      cedulaConductor:   configTurno.cedula||"",
+      nombreConductor:   configTurno.nombreConductor||"",
+      empresa:           configTurno.empresa||"Autoboy",
+      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fecha:             configTurno.fechaInicio,
+      horaInicio:        configTurno.horaInicio,
+      estadoTurno:       "Activo",
+      viajesCompletados: viajeActual,
+      conteos:           estado.conteos,
+      conteosViaje:      estado.conteosViaje,
+      historial:         estado.historial.slice(0,50),
+      viajeActual:       viajeActual,
+      totalPasajeros:    estado.conteos.reduce((a,b)=>a+b,0),
+      totalRecaudo:      estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      ultimaActualizacion: serverTimestamp()
     },{merge:true});
     setSyncStatus("ok");
   }catch(e){
@@ -1126,13 +1188,21 @@ async function guardarPasajeroFirebase(reg){
   try{
     const {db,collection,addDoc,serverTimestamp}=window._fb;
     await addDoc(collection(db,"pasajeros"),{
-      placa: configTurno.placa,
-      fechaInicio: configTurno.fechaInicio,
-      rutaNombre: reg.nombre,
-      rutaIdx: reg.idx,
-      precio: reg.precio,
-      viaje: reg.viaje,
-      hora: reg.hora,
+      // ── LLAVE PRINCIPAL ──
+      idTurno:         configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio),
+      // ── IDENTIFICACIÓN DEL TURNO ──
+      placa:           configTurno.placa,
+      cedulaConductor: configTurno.cedula||"",
+      nombreConductor: configTurno.nombreConductor||"",
+      empresa:         configTurno.empresa||"Autoboy",
+      corredor:        configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fechaInicio:     configTurno.fechaInicio,
+      // ── DATOS DEL PASAJERO ──
+      rutaNombre:  reg.nombre,
+      rutaIdx:     reg.idx,
+      precio:      reg.precio,
+      viaje:       reg.viaje,
+      hora:        reg.hora,
       numPasajero: reg.num,
       registradoEn: serverTimestamp()
     });
@@ -1146,12 +1216,27 @@ async function guardarLiquidacionFirebase(resumen){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const key=configTurno.placa+"_"+resumen.fecha;
-    await setDoc(doc(db,"liquidaciones",key),{
-      placa: configTurno.placa,
+    const idTurnoLiq=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
+    await setDoc(doc(db,"liquidaciones",idTurnoLiq),{
+      idTurno:         idTurnoLiq,
+      placa:           configTurno.placa,
+      cedulaConductor: configTurno.cedula||"",
+      nombreConductor: configTurno.nombreConductor||"",
+      empresa:         configTurno.empresa||"Autoboy",
+      corredor:        configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      viajesCompletados: viajeActual,
       ...resumen,
       guardadoEn: serverTimestamp()
     },{merge:true});
+    // Cerrar el turno en Firestore
+    setDoc(doc(db,"turnos",idTurnoLiq),{
+      estadoTurno:"Cerrado",
+      fechaFin:serverTimestamp(),
+      viajesCompletados:viajeActual,
+      produccion:resumen.total||0,
+      pasajeros:resumen.pax||0,
+      ultimaActualizacion:serverTimestamp()
+    },{merge:true}).catch(()=>{});
     setSyncStatus("ok");
   }catch(e){ setSyncStatus("pending"); }
 }
@@ -1262,7 +1347,20 @@ function liquidarDia(est){
     const propietario=Math.round(neto*(pct/100));
     const conductor=neto-propietario;
     const hist=cargarHistDias();
-    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,gastos,totalGastos,pctPropietario:pct,neto,propietario,conductor,conteos:[...est.conteos]};
+    const resumen={
+      idTurno:           configTurno.idTurno||generarIdTurno(configTurno.placa||"",configTurno.cedula||"0",est.diaActual||diaKey()),
+      fecha:             est.diaActual||diaKey(new Date(Date.now()-86400000)),
+      placa:             configTurno.placa||"",
+      cedulaConductor:   configTurno.cedula||"",
+      nombreConductor:   configTurno.nombreConductor||"",
+      empresa:           configTurno.empresa||"Autoboy",
+      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      viajesCompletados: viajeActual,
+      pax:totalPax, total:totalDin,
+      gastos, totalGastos,
+      pctPropietario:pct, neto, propietario, conductor,
+      conteos:[...est.conteos]
+    };
     hist.unshift(resumen);
     localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,90)));
     guardarLiquidacionFirebase(resumen);
@@ -1287,6 +1385,7 @@ setInterval(verificarCambioDia,60000);
 function setViaje(n){
   const anterior=viajeActual;
   viajeActual=n;
+  if(configTurno) configTurno.viajesCompletados=n;
   document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i+1===n));
   document.getElementById("viajeLabel").textContent="🚌 VIAJE "+n+" DE 3";
   actualizarUI();guardarEstado();
@@ -1732,7 +1831,8 @@ function registrar(idx){
   // Actualizar estado en turnos_activos para sincronización entre dispositivos
   if(fbListo && window._fb && configTurno.placa){
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const key=configTurno.placa+"_"+configTurno.fechaInicio;
+    const idTurno=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
+    const key=idTurno; // idTurno es la llave principal
     setDoc(doc(db,"turnos_activos",key),{
       conteos: estado.conteos,
       conteosViaje: estado.conteosViaje,
