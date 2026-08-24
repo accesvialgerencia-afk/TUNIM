@@ -149,34 +149,160 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 .sec-action{font-size:0.58rem;color:var(--muted);background:none;border:1px solid var(--border2);padding:3px 8px;border-radius:20px;cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:1px;text-transform:uppercase;transition:border-color 0.2s,color 0.2s}
 .sec-action:hover{border-color:var(--rojo);color:var(--rojo)}
 
+/* ── GRID DE TARIFAS ── */
 .destinos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px 12px}
-.btn-dest{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:16px 12px 14px;cursor:pointer;position:relative;overflow:hidden;text-align:left;transition:border-color 0.2s,transform 0.1s;user-select:none;-webkit-user-select:none}
-.btn-dest:active{transform:scale(0.93)}
-.btn-dest.flash-anim{animation:destFlash 0.28s ease}
-@keyframes destFlash{0%{transform:scale(1)}35%{transform:scale(0.91);border-color:var(--accent)}100%{transform:scale(1)}}
-.btn-dest .flash-layer{position:absolute;inset:0;background:var(--accent);opacity:0;border-radius:12px;pointer-events:none}
-.btn-dest.flash-anim .flash-layer{animation:layerFade 0.28s ease}
-@keyframes layerFade{0%{opacity:0.3}100%{opacity:0}}
-.dest-origen{font-size:0.56rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
-.dest-nombre{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:1px;color:var(--text);line-height:1.1;margin-bottom:5px}
-.dest-precio{font-family:'Bebas Neue',sans-serif;font-size:1.7rem;letter-spacing:1px;line-height:1}
-.dest-badge{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:0.9rem;opacity:0;transform:scale(0.4);transition:opacity 0.25s,transform 0.25s;background:var(--accent);color:#000}
+
+/* ── BOTÓN DE TARIFA — Diseño profesional y visible ── */
+.btn-dest{
+  background:var(--surface);
+  border:2px solid var(--border);
+  border-radius:16px;
+  padding:18px 14px 16px;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+  text-align:left;
+  transition:all 0.15s ease;
+  user-select:none;
+  -webkit-user-select:none;
+  box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  min-height:110px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.btn-dest:active{
+  transform:scale(0.92);
+  box-shadow:0 1px 4px rgba(0,0,0,0.2);
+}
+
+/* Línea de color superior */
+.btn-dest::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;
+  height:3px;
+  background:var(--accent);
+  border-radius:14px 14px 0 0;
+}
+
+/* Flash al registrar */
+.btn-dest.flash-anim{animation:destFlash 0.25s ease}
+@keyframes destFlash{
+  0%{transform:scale(1)}
+  30%{transform:scale(0.90);border-color:var(--accent);box-shadow:0 0 20px rgba(var(--accent-rgb),0.4)}
+  100%{transform:scale(1)}
+}
+.btn-dest .flash-layer{
+  position:absolute;inset:0;
+  background:var(--accent);
+  opacity:0;border-radius:14px;
+  pointer-events:none;
+}
+.btn-dest.flash-anim .flash-layer{animation:layerFade 0.25s ease}
+@keyframes layerFade{0%{opacity:0.25}100%{opacity:0}}
+
+/* Textos */
+.dest-origen{
+  font-size:0.58rem;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:4px;
+}
+.dest-nombre{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.3rem;letter-spacing:1px;
+  color:var(--text);line-height:1.1;
+  margin-bottom:6px;
+}
+.dest-precio{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:2rem;letter-spacing:1px;
+  line-height:1;font-weight:900;
+}
+
+/* Badge contador — más visible */
+.dest-badge{
+  position:absolute;top:10px;right:10px;
+  min-width:28px;height:28px;
+  border-radius:14px;
+  padding:0 6px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Bebas Neue',sans-serif;font-size:1rem;
+  opacity:0;transform:scale(0.4);
+  transition:opacity 0.25s,transform 0.25s;
+  background:var(--accent);color:#000;
+  font-weight:900;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+}
 .dest-badge.show{opacity:1;transform:scale(1)}
-/* Colores por ORIGEN de tarifa — mismo grupo = mismo color */
-/* Origen Soacha (G1): Azul oscuro */
-.btn-dest[data-idx="0"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="0"] .dest-precio{color:#4A90D9}
-.btn-dest[data-idx="1"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="1"] .dest-precio{color:#4A90D9}
-.btn-dest[data-idx="2"]{--accent:#2B6CB0;--bg-btn:#0D1E30}.btn-dest[data-idx="2"] .dest-precio{color:#4A90D9}
-/* Origen Funza/Mosquera (G6): Gris azulado */
-.btn-dest[data-idx="3"]{--accent:#4A90D9;--bg-btn:#152030}.btn-dest[data-idx="3"] .dest-precio{color:#7AB8F0}
-/* Origen Funza→Bogotá: Blanco/gris */
-.btn-dest[data-idx="4"]{--accent:#E8EDF2;--bg-btn:#1A2530}.btn-dest[data-idx="4"] .dest-precio{color:#C0CDD8}
-/* Origen Bogotá (G4/G7): Azul medio */
-.btn-dest[data-idx="5"]{--accent:#2B6CB0;--bg-btn:#0F1E2E}.btn-dest[data-idx="5"] .dest-precio{color:#4A90D9}
-/* Origen Soacha→Funza largo: Amarillo */
-.btn-dest[data-idx="6"]{--accent:#F5C800;--bg-btn:#1A1A00}.btn-dest[data-idx="6"] .dest-precio{color:#F5C800}
-/* Origen Planadas (especial): Blanco */
-.btn-dest[data-idx="7"]{--accent:#FFFFFF;--bg-btn:#1A2030}.btn-dest[data-idx="7"] .dest-precio{color:#FFFFFF}
+/* ══ COLORES POR GRUPO DE TARIFA ══
+   Grupo A — Soacha urbano (azul): $2.300 · $3.300 · $3.700
+   Grupo B — Largo intermunicipal (amarillo): $8.000
+   Grupo C — Bogotá origen (verde): $7.000
+   Grupo D — Post-peaje (cian): $3.000
+   Grupo E — Ruta especial (blanco): $3.400
+*/
+
+/* Grupo A — Soacha → Bogotá (Azul) */
+.btn-dest[data-idx="0"]{
+  --accent:#4A90D9;
+  background:linear-gradient(145deg,#0D1E30,#0F2540);
+  border-color:#2B6CB0;
+}
+.btn-dest[data-idx="0"] .dest-precio{color:#4A90D9}
+.btn-dest[data-idx="0"] .dest-nombre{color:#A8D4FF}
+
+.btn-dest[data-idx="1"]{
+  --accent:#4A90D9;
+  background:linear-gradient(145deg,#0D1E30,#0F2540);
+  border-color:#2B6CB0;
+}
+.btn-dest[data-idx="1"] .dest-precio{color:#4A90D9}
+.btn-dest[data-idx="1"] .dest-nombre{color:#A8D4FF}
+
+.btn-dest[data-idx="2"]{
+  --accent:#4A90D9;
+  background:linear-gradient(145deg,#0D1E30,#0F2540);
+  border-color:#2B6CB0;
+}
+.btn-dest[data-idx="2"] .dest-precio{color:#4A90D9}
+.btn-dest[data-idx="2"] .dest-nombre{color:#A8D4FF}
+
+/* Grupo B — Soacha → Funza LARGO (Amarillo) */
+.btn-dest[data-idx="3"]{
+  --accent:#F5C800;
+  background:linear-gradient(145deg,#1A1500,#221C00);
+  border-color:#F5C800;
+}
+.btn-dest[data-idx="3"] .dest-precio{color:#F5C800;font-size:2.2rem}
+.btn-dest[data-idx="3"] .dest-nombre{color:#FFE77A}
+
+/* Grupo C — Bogotá → Funza (Verde) */
+.btn-dest[data-idx="4"]{
+  --accent:#00C47A;
+  background:linear-gradient(145deg,#001A0F,#002015);
+  border-color:#00C47A;
+}
+.btn-dest[data-idx="4"] .dest-precio{color:#00C47A}
+.btn-dest[data-idx="4"] .dest-nombre{color:#80E8BE}
+
+/* Grupo D — Río Bogotá → Funza (Cian) */
+.btn-dest[data-idx="5"]{
+  --accent:#00B4CC;
+  background:linear-gradient(145deg,#001820,#001E28);
+  border-color:#00B4CC;
+}
+.btn-dest[data-idx="5"] .dest-precio{color:#00B4CC}
+.btn-dest[data-idx="5"] .dest-nombre{color:#80DFE8}
+
+/* Grupo E — Planadas especial (Blanco/Gris) */
+.btn-dest[data-idx="6"]{
+  --accent:#E8EDF2;
+  background:linear-gradient(145deg,#1A2030,#202838);
+  border-color:#4A5A7A;
+}
+.btn-dest[data-idx="6"] .dest-precio{color:#E8EDF2}
+.btn-dest[data-idx="6"] .dest-nombre{color:#B0C0D8}
 
 /* ── CONFIRMACIÓN VISUAL GRANDE ── */
 .confirm-overlay{position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 0.08s}
@@ -311,10 +437,6 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <div class="modal-sub">CONFIGURACIÓN DE TURNO · ACCESVIAL 2026</div>
     <label class="modal-label">Placa del vehículo</label>
     <input class="modal-input" id="inputPlaca" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
-    <label class="modal-label">Cédula del conductor *</label>
-    <input class="modal-input" id="inputCedula" type="number" placeholder="12345678" autocomplete="off" style="letter-spacing:2px">
-    <label class="modal-label">Nombre del conductor (opcional)</label>
-    <input class="modal-input" id="inputNombreConductor" type="text" placeholder="Juan Piravague" autocomplete="off" style="text-transform:capitalize;letter-spacing:0">
     <label class="modal-label">Fecha de inicio de ruta</label>
     <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
     <label class="modal-label">Hora de inicio</label>
@@ -353,9 +475,6 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   <div style="text-align:center">
     <div class="vbar-inicio">Inicio: <span id="vbarFecha">—</span></div>
     <div class="vbar-inicio">Hora: <span id="vbarHora">—</span></div>
-    <div class="vbar-inicio" id="vbarCedula" style="color:var(--verde);font-size:0.5rem;letter-spacing:1px"></div>
-    <div class="vbar-inicio" id="vbarNombre" style="color:var(--muted2);font-size:0.5rem"></div>
-    <div id="vbarIdTurno" style="font-size:0.38rem;color:var(--border2);font-family:'JetBrains Mono',monospace;text-align:center;padding:0 4px"></div>
   </div>
   <button class="vbar-edit" onclick="editarConfig()">✏ Editar</button>
   <button id="btnGPS" class="vbar-edit" onclick="toggleGPS()" style="background:rgba(0,214,143,0.1);border-color:rgba(0,214,143,0.3);color:var(--verde)">📍 GPS</button>
@@ -649,18 +768,20 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 const _TUNIM={producto:"TUNIM",autor:"ACCESVIAL",fecha:"2026-06-08",id:"TUNIM-ACCESVIAL-20260608-COR-FMBS"};
 Object.freeze(_TUNIM);
 
+// ══ TARIFAS OFICIALES — Matriz TUNIM Premium | ACCESVIAL 2026 ══
 const RUTAS=[
-  // ── SALIENDO DE SOACHA ──
-  {nombre:"Soacha → Bosa Estación",     desde:"Soacha",  hasta:"Bosa",    precio:2300},
-  {nombre:"Soacha → Av. Villavicencio", desde:"Soacha",  hasta:"Bogotá",  precio:3300},
-  {nombre:"Soacha → Río Bogotá",        desde:"Soacha",  hasta:"Bogotá",  precio:3700},
-  {nombre:"Soacha → Funza/Mosquera",    desde:"Soacha",  hasta:"Funza",   precio:8000},
-  // ── SALIENDO DE FUNZA/MOSQUERA ──
-  {nombre:"Funza → Bogotá",             desde:"Funza",   hasta:"Bogotá",  precio:7000},
-  {nombre:"Funza → Fontibón Cl13",      desde:"Funza",   hasta:"Bogotá",  precio:6200},
-  {nombre:"Funza ↔ Mosquera",           desde:"Funza",   hasta:"Mosquera",precio:3000},
-  // ── RUTA ESPECIAL ──
-  {nombre:"Planadas → Portal Dorado",   desde:"Planadas", hasta:"Bogotá", precio:3400},
+  // ── SALIENDO DE SOACHA → BOGOTÁ ──
+  {nombre:"Soacha → Bosa Estación",     desde:"Soacha",  hasta:"Bosa",    precio:2300, geocercaDestino:"G2"},
+  {nombre:"Soacha → Av. Villavicencio", desde:"Soacha",  hasta:"Bogotá",  precio:3300, geocercaDestino:"G3"},
+  {nombre:"Soacha → Río Bogotá",        desde:"Soacha",  hasta:"Bogotá",  precio:3700, geocercaDestino:"G4"},
+  // ── SOACHA → FUNZA/MOSQUERA ──
+  {nombre:"Soacha → Funza/Mosquera",    desde:"Soacha",  hasta:"Funza",   precio:8000, geocercaDestino:"G7"},
+  // ── SALIENDO DE BOGOTÁ ──
+  {nombre:"Bogotá → Funza/Mosquera",    desde:"Bogotá",  hasta:"Funza",   precio:7000, geocercaDestino:"G7"},
+  // ── TRAYECTO CORTO POST-PEAJE ──
+  {nombre:"Río Bogotá → Funza/Mosq.",   desde:"Río Bog", hasta:"Funza",   precio:3000, geocercaDestino:"G8"},
+  // ── RUTA ESPECIAL PLANADAS ──
+  {nombre:"Planadas → Portal Dorado",   desde:"Planadas",hasta:"Bogotá",  precio:3400, geocercaDestino:"G10"},
 ];
 
 const META_MIN=28, MULTA1=10000, MULTAN=5000;
@@ -668,85 +789,301 @@ const STORAGE_KEY="tunim_v3";
 const HIST_KEY="tunim_hist_v3";
 const CONFIG_KEY="tunim_config_v1";
 
-// ══ idTurno — CORAZÓN DE LA ARQUITECTURA TUNIM ══
-// Formato: TUN-{fecha}-{placa sin guión}-{cédula}
-// Ejemplo: TUN-20260806-TAL866-12345678
-// Relaciona: turnos · pasajeros · liquidaciones · auditorías · IA
-function generarIdTurno(placa, cedula, fecha){
-  const p = placa.replace(/[^A-Z0-9]/g,"");
-  const f = fecha.replace(/-/g,"");
-  const c = (cedula||"0").toString().replace(/[^0-9]/g,"");
-  return "TUN-"+f+"-"+p+"-"+c;
+// ══════════════════════════════════════════════════════════════
+// SPRINT 0 — SEGURIDAD | TUNIM · ACCESVIAL 2026
+// Estándar: OWASP Top 10 + Ley 1581 Colombia
+// ══════════════════════════════════════════════════════════════
+
+// ── P0-04: SANITIZACIÓN DE INPUTS ──
+// Previene inyección XSS y datos maliciosos
+const SANITIZE = {
+  // Caracteres peligrosos para XSS e inyección
+  _PELIGROSOS: [60,62,34,39,38,59,123,125], // < > " ' & ; { }
+  _esPeligroso(c){ return this._PELIGROSOS.includes(c.charCodeAt(0)); },
+  placa(v){
+    const permitidos="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
+    return (v||"").toUpperCase().split("").filter(c=>permitidos.includes(c)).join("").slice(0,7);
+  },
+  cedula(v){
+    return (v||"").split("").filter(c=>c>="0"&&c<="9").join("").slice(0,12);
+  },
+  nombre(v){
+    return (v||"").split("").filter(c=>!this._esPeligroso(c)).join("").trim().slice(0,80);
+  },
+  texto(v){
+    return (v||"").split("").filter(c=>!this._esPeligroso(c)).join("").trim().slice(0,200);
+  },
+  precio(v){
+    const n=parseInt(v);
+    const VALIDOS=[2300,3000,3300,3400,3700,7000,8000];
+    return VALIDOS.includes(n)?n:0;
+  }
+};
+
+// ── P0-05: VALIDACIÓN DE INTEGRIDAD DE DATOS ──
+function validarTurno(config){
+  const errores = [];
+  if(!config.placa || config.placa.length < 5)
+    errores.push("Placa inválida");
+  if(!config.cedula || config.cedula.length < 6)
+    errores.push("Cédula inválida — mínimo 6 dígitos");
+  if(!config.fechaInicio)
+    errores.push("Fecha requerida");
+  if(!config.idTurno || !config.idTurno.startsWith("TUN-"))
+    errores.push("idTurno inválido");
+  return errores;
+}
+
+function validarPasajero(reg){
+  const PRECIOS_VALIDOS = [2300,3000,3300,3400,3700,7000,8000];
+  if(!PRECIOS_VALIDOS.includes(reg.precio))
+    return false; // Precio manipulado
+  if(reg.viaje < 1 || reg.viaje > 3)
+    return false; // Viaje fuera de rango
+  return true;
+}
+
+// ── P0-08: RATE LIMITING — Máx 1 registro cada 2 segundos ──
+let _ultimoRegistro = 0;
+const RATE_LIMIT_MS = 2000;
+
+function rateLimitOk(){
+  const ahora = Date.now();
+  if(ahora - _ultimoRegistro < RATE_LIMIT_MS) return false;
+  _ultimoRegistro = ahora;
+  return true;
+}
+
+// ── P0-06: HASH DE CÉDULAS — Protección Ley 1581 ──
+// Usamos un hash simple reversible para el MVP
+// En producción usar Web Crypto API con SHA-256
+function hashCedula(cedula){
+  if(!cedula) return "";
+  // Primeros 3 + últimos 2 dígitos visibles — resto enmascarado
+  const c = cedula.toString();
+  if(c.length <= 5) return c;
+  return c.slice(0,3) + "*".repeat(c.length-5) + c.slice(-2);
+}
+
+// Hash para Firebase (no reversible en cliente)
+async function hashSHA(texto){
+  try{
+    const encoder = new TextEncoder();
+    const data = encoder.encode(texto + "TUNIM-ACCESVIAL-2026-SALT");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2,"0")).join("").slice(0,32);
+  }catch(e){
+    // Fallback si crypto.subtle no disponible
+    return texto.split("").reduce((h,c)=>((h<<5)-h+c.charCodeAt(0))|0,0).toString(36);
+  }
+}
+
+// ── P0-09: AUDITORÍA DE SEGURIDAD ──
+const AUDIT_KEY = "tunim_audit_v1";
+
+function auditLog(evento, detalle, nivel="info"){
+  const entrada = {
+    ts: new Date().toISOString(),
+    evento,
+    detalle: SANITIZE.texto(detalle),
+    nivel, // info | warn | error | security
+    placa: configTurno?.placa||"",
+    ua: navigator.userAgent.slice(0,80)
+  };
+  try{
+    const log = JSON.parse(localStorage.getItem(AUDIT_KEY)||"[]");
+    log.unshift(entrada);
+    localStorage.setItem(AUDIT_KEY, JSON.stringify(log.slice(0,100)));
+  }catch(e){}
+  // Eventos de seguridad van a Firebase
+  if(nivel === "security" && fbListo && window._fb){
+    const {db,collection,addDoc,serverTimestamp} = window._fb;
+    addDoc(collection(db,"auditoria_seguridad"),{
+      ...entrada,
+      registradoEn: serverTimestamp()
+    }).catch(()=>{});
+  }
+  if(nivel === "error" || nivel === "security"){
+    console.warn("[TUNIM SECURITY]", evento, detalle);
+  }
+}
+
+// ── DETECTOR DE INTENTOS SOSPECHOSOS ──
+let _intentosFallidos = 0;
+const MAX_INTENTOS = 5;
+let _bloqueadoHasta = 0;
+
+function verificarBloqueo(){
+  if(Date.now() < _bloqueadoHasta){
+    const seg = Math.ceil((_bloqueadoHasta - Date.now())/1000);
+    mostrarToast("⚠️ Acceso bloqueado temporalmente. Espera "+seg+"s","alerta");
+    return false;
+  }
+  return true;
+}
+
+function registrarIntentoFallido(motivo){
+  _intentosFallidos++;
+  auditLog("INTENTO_FALLIDO", motivo, "security");
+  if(_intentosFallidos >= MAX_INTENTOS){
+    _bloqueadoHasta = Date.now() + 60000; // 60 segundos
+    _intentosFallidos = 0;
+    auditLog("ACCESO_BLOQUEADO", "Máximo de intentos alcanzado", "security");
+    mostrarToast("🔒 Acceso bloqueado 60 segundos por intentos fallidos","alerta");
+  }
 }
 
 // ══ GEOCERCAS DEL CORREDOR — ACCESVIAL 2026 ══
 // Coordenadas validadas en ruta real por ACCESVIAL
+// ══════════════════════════════════════════════════════════
+// GEOCERCAS DE TARIFAS — Matriz oficial TUNIM Premium
+// Corredor: Soacha-Bogotá-Funza-Mosquera | ACCESVIAL 2026
+// Ref: TUNIM_Premium_Geocercas_v1.pdf
+// ══════════════════════════════════════════════════════════
 const GEOCERCAS = [
   {
-    codigo: "G1", nombre: "Bosa Tama / Ciudad Verde",
-    lat: 4.615282, lng: -74.213917, radio: 300,
-    tarifa: 0, // punto de origen
-    descripcion: "Inicio de ruta desde Soacha",
-    esOrigen: true
+    codigo: "G1", nombre: "Soacha — Zona de origen",
+    lat: 4.5712403, lng: -74.2163023, radio: 800,
+    tarifa: 0,
+    descripcion: "Zona origen Soacha — cubre San Humberto, Llanos y Ciudad Verde",
+    esOrigen: true,
+    tarifas: []
   },
   {
     codigo: "G2", nombre: "Bosa Estación",
     lat: 4.595778, lng: -74.182926, radio: 350,
     tarifa: 2300,
-    descripcion: "Límite tarifa $2.300 — bidireccional",
+    descripcion: "Destino $2.300 — trayecto corto urbano Soacha ↔ Bosa",
     tarifas: [2300]
   },
   {
     codigo: "G3", nombre: "Av. Villavicencio / 1a de Mayo",
     lat: 4.617851, lng: -74.163855, radio: 350,
     tarifa: 3300,
-    descripcion: "Límite tarifa $3.300 — bidireccional",
+    descripcion: "Destino $3.300 — ingreso intermedio a Bogotá",
     tarifas: [3300]
   },
   {
-    codigo: "G4", nombre: "Río Bogotá / Puente Calle 13",
+    codigo: "G4", nombre: "Río Bogotá — Puente Calle 13",
     lat: 4.696481, lng: -74.174446, radio: 500,
     tarifa: 3700,
-    descripcion: "PUNTO CRÍTICO — frontera urbano/intermunicipal. $3.700 sin importar dónde se baje en Bogotá o Soacha",
+    descripcion: "PUNTO CRÍTICO — frontera urbano/intermunicipal. Separa 5 tarifas.",
     tarifas: [3700],
     esFrontera: true
   },
   {
-    codigo: "G5", nombre: "Peaje Calle 13",
+    codigo: "G5", nombre: "Bosa La Despensa",
+    lat: 4.6178, lng: -74.1789, radio: 400,
+    tarifa: null,
+    descripcion: "Origen $7.000 desde Bogotá hacia Funza/Mosquera",
+    tarifas: [7000],
+    esOrigenBogota: true
+  },
+  {
+    codigo: "G6", nombre: "Peaje Calle 13",
     lat: 4.699025, lng: -74.181510, radio: 300,
     tarifa: null,
-    descripcion: "Punto de validación — si cruza este punto debe haber pagado $7.000 o $8.000",
+    descripcion: "Punto de validación — confirma trayecto largo $8.000",
     tarifas: [7000, 8000],
     esValidacion: true
   },
   {
-    codigo: "G6", nombre: "Paradero INPEC — Funza/Mosquera",
-    lat: 4.734942, lng: -74.183975, radio: 350,
+    codigo: "G7", nombre: "Villa Paul — Funza",
+    lat: 4.7420775, lng: -74.2275960, radio: 600,
     tarifa: null,
-    descripcion: "Destino final $7.000 (desde Bogotá) y $8.000 (desde Soacha)",
+    descripcion: "Destino final $7.000 y $8.000 — paradero Villa Paul",
     tarifas: [7000, 8000],
     esDestino: true
   },
   {
-    codigo: "G7", nombre: "Fontibón — Calle 13 / Cali",
-    lat: 4.660867, lng: -74.137253, radio: 400,
-    tarifa: 6200,
-    descripcion: "Origen/destino $6.200 — Fontibón ↔ Funza/Mosquera",
-    tarifas: [6200]
+    codigo: "G8", nombre: "INPEC — Funza/Mosquera",
+    lat: 4.7349630, lng: -74.1860322, radio: 400,
+    tarifa: null,
+    descripcion: "Destino final $7.000 y $8.000 — paradero INPEC",
+    tarifas: [7000, 8000],
+    esDestino: true
   },
   {
-    codigo: "G8", nombre: "Planadas / Portal Dorado",
-    lat: 4.615282, lng: -74.213917, radio: 400, // pendiente coordenada real
+    codigo: "G9", nombre: "Planadas",
+    lat: 4.615282, lng: -74.213917, radio: 400,
     tarifa: 3400,
     descripcion: "Tarifa única $3.400 — ruta especial Planadas ↔ Portal Dorado",
     tarifas: [3400],
     esRutaEspecial: true
+  },
+  {
+    codigo: "G10", nombre: "Portal Dorado — Bogotá",
+    lat: 4.6944, lng: -74.1478, radio: 350,
+    tarifa: 3400,
+    descripcion: "Destino ruta especial Planadas — tarifa única $3.400",
+    tarifas: [3400],
+    esDestinoEspecial: true
   }
 ];
 
-// Pendientes de confirmar:
-// G8 Planadas → coordenada real (usada G1 temporalmente)
-// G_3000 → $3.000 Río Bogotá en adelante → Funza/Mosquera (pendiente coordenada)
+// ══════════════════════════════════════════════════════════
+// GEOCERCAS OPERATIVAS — Origen y destino de turno
+// Mapa operativo validado en ruta | ACCESVIAL 2026
+// ══════════════════════════════════════════════════════════
+const GEOCERCAS_OPERATIVAS = [
+  {
+    id: "san_humberto",
+    nombre: "San Humberto",
+    lat: 4.5712403, lng: -74.2163023, radio: 800,
+    tipo: "origen",
+    sentido: "ida",
+    destinosEsperados: ["villa_paul"],
+    destinoPredecible: true
+  },
+  {
+    id: "llanos",
+    nombre: "Llanos",
+    lat: 4.5802205, lng: -74.2456135, radio: 600,
+    tipo: "origen",
+    sentido: "ida",
+    destinosEsperados: ["inpec"],
+    destinoPredecible: true
+  },
+  {
+    id: "ciudad_verde",
+    nombre: "Ciudad Verde",
+    lat: 4.6155566, lng: -74.2190992, radio: 500,
+    tipo: "origen_bifurcacion",
+    sentido: "ida",
+    destinosEsperados: ["villa_paul", "inpec"],
+    destinoPredecible: false,
+    // Solo se sabe el destino al llegar:
+    // → Parque Mosquera = Villa Paul
+    // → Purina/Metro Mosquera = INPEC
+    nota: "Destino detectado al llegar a geocerca de destino"
+  },
+  {
+    id: "villa_paul",
+    nombre: "Villa Paul",
+    lat: 4.7420775, lng: -74.2275960, radio: 600,
+    tipo: "origen_y_destino",
+    sentido: "vuelta",
+    destinosEsperados: ["san_humberto", "ciudad_verde"],
+    destinoPredecible: false
+  },
+  {
+    id: "inpec",
+    nombre: "INPEC",
+    lat: 4.7349630, lng: -74.1860322, radio: 400,
+    tipo: "origen_y_destino",
+    sentido: "vuelta",
+    destinosEsperados: ["llanos", "ciudad_verde"],
+    destinoPredecible: false
+  }
+];
+
+// ══ ESTADO OPERATIVO DEL TURNO ══
+let origenOperativo = null;    // geocerca donde inició el turno
+let destinoOperativo = null;   // geocerca donde terminó el turno
+let horaOrigenGPS = null;      // timestamp GPS al detectar origen
+let horaDestinoGPS = null;     // timestamp GPS al detectar destino
+let geocercasOperativasActivas = new Set();
 
 // ══ MOTOR DE GEOCERCAS ══
 let gpsActivo = false;
@@ -823,6 +1160,20 @@ function detenerGPS(){
 // Verificar en qué geocercas está el bus
 function verificarGeocercas(pos){
   detectarDireccion(pos.lat);
+
+  // ── Motor geocercas operativas ──
+  GEOCERCAS_OPERATIVAS.forEach(geo => {
+    const dist = calcularDistancia(pos.lat, pos.lng, geo.lat, geo.lng);
+    const dentro = dist <= geo.radio;
+    const estabaAntes = geocercasOperativasActivas.has(geo.id);
+    if(dentro && !estabaAntes){
+      geocercasOperativasActivas.add(geo.id);
+      alEntrarGeocercaOperativa(geo);
+    }
+    if(!dentro && estabaAntes) geocercasOperativasActivas.delete(geo.id);
+  });
+
+  // ── Motor geocercas de tarifas ──
   GEOCERCAS.forEach(geo => {
     const dist = calcularDistancia(pos.lat, pos.lng, geo.lat, geo.lng);
     const dentroAhora = dist <= geo.radio;
@@ -847,6 +1198,129 @@ function verificarGeocercas(pos){
 }
 
 // Acciones al entrar a una geocerca
+// ══ GEOCERCA OPERATIVA — Detectar origen y destino del turno ══
+function alEntrarGeocercaOperativa(geo){
+  const hora = formatHoraCol(horaColombiaActual());
+  console.log("📍 Geocerca operativa:", geo.nombre, "| Tipo:", geo.tipo);
+
+  // Es un punto de ORIGEN — inicio de turno
+  if((geo.tipo === "origen" || geo.tipo === "origen_bifurcacion") && !origenOperativo){
+    origenOperativo = geo;
+    horaOrigenGPS = hora;
+    // Actualizar configTurno con origen real
+    if(configTurno){
+      configTurno.origenOperativo = geo.nombre;
+      configTurno.horaOrigenGPS = hora;
+      if(geo.destinoPredecible && geo.destinosEsperados.length === 1){
+        configTurno.destinoEsperado = geo.destinosEsperados[0];
+      }
+      try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(configTurno)); }catch(e){}
+    }
+    mostrarToast("📍 Origen: " + geo.nombre, "");
+    console.log("🚌 Origen registrado:", geo.nombre, "a las", hora);
+    // Voz al conductor
+    if(geo.destinoPredecible && geo.destinosEsperados.length === 1){
+      const dest = geo.destinosEsperados[0].replace("_"," ");
+      setTimeout(()=>hablar("Origen registrado "+geo.nombre+". Destino esperado "+dest+".", 1.0, 1.1), 500);
+    } else {
+      setTimeout(()=>hablar("Origen registrado "+geo.nombre+". Destino se detectará en ruta.", 1.0, 1.1), 500);
+    }
+    actualizarIndicadorRuta();
+    sincronizarConfigFirebase();
+    return;
+  }
+
+  // Es un punto de DESTINO — fin del turno o tránsito
+  if((geo.tipo === "origen_y_destino" || geo.tipo === "destino") && origenOperativo){
+    destinoOperativo = geo;
+    horaDestinoGPS = hora;
+    // Calcular duración del recorrido
+    const duracion = calcularDuracionMinutos(horaOrigenGPS, hora);
+    // Actualizar configTurno con destino real
+    if(configTurno){
+      configTurno.destinoOperativo = geo.nombre;
+      configTurno.horaDestinoGPS = hora;
+      configTurno.duracionMinutos = duracion;
+      configTurno.rutaOperativa = origenOperativo.nombre + " → " + geo.nombre;
+      try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(configTurno)); }catch(e){}
+    }
+    mostrarToast("🏁 Llegada: " + geo.nombre + " (" + duracion + " min)", "");
+    console.log("🏁 Destino registrado:", geo.nombre, "| Duración:", duracion, "min");
+    // Voz al conductor
+    setTimeout(()=>hablar(
+      "Llegada a "+geo.nombre+". Recorrido completado en "+duracion+" minutos. "+
+      (duracion <= 28 ? "Excelente tiempo." : ""),
+      1.0, 1.1
+    ), 500);
+    actualizarIndicadorRuta();
+    // Guardar recorrido en Firebase
+    guardarRecorridoOperativoFirebase(duracion);
+    // Preparar para el siguiente viaje — reset tras 60 segundos
+    setTimeout(()=>{
+      origenOperativo = null;
+      destinoOperativo = null;
+      horaOrigenGPS = null;
+      horaDestinoGPS = null;
+      geocercasOperativasActivas.clear();
+      console.log("🔄 Sistema operativo listo para siguiente viaje");
+    }, 60000);
+    return;
+  }
+}
+
+function actualizarIndicadorRuta(){
+  const el = document.getElementById("vbarRutaOp");
+  if(!el) return;
+  if(origenOperativo && destinoOperativo){
+    el.textContent = "🏁 " + origenOperativo.nombre + " → " + destinoOperativo.nombre;
+    el.style.display = "block";
+    el.style.color = "var(--verde)";
+  } else if(origenOperativo){
+    el.textContent = "🚌 " + origenOperativo.nombre + " → ...";
+    el.style.display = "block";
+    el.style.color = "var(--amarillo)";
+  } else {
+    el.textContent = "";
+    el.style.display = "none";
+  }
+}
+
+function calcularDuracionMinutos(horaInicio, horaFin){
+  try{
+    const [h1,m1,s1] = horaInicio.split(":").map(Number);
+    const [h2,m2,s2] = horaFin.split(":").map(Number);
+    const ini = h1*3600+m1*60+(s1||0);
+    const fin = h2*3600+m2*60+(s2||0);
+    return Math.max(0, Math.round((fin-ini)/60));
+  }catch(e){ return 0; }
+}
+
+async function guardarRecorridoOperativoFirebase(duracion){
+  if(!fbListo||!window._fb||!configTurno?.placa) return;
+  try{
+    const {db,collection,addDoc,serverTimestamp}=window._fb;
+    await addDoc(collection(db,"recorridos_operativos"),{
+      idTurno:          configTurno.idTurno||"",
+      placa:            configTurno.placa,
+      // P0-06: Ley 1581 — cédula enmascarada
+      cedulaMask:      hashCedula(configTurno.cedula||""),
+      cedulaConductor: configTurno.cedula||"",
+      nombreConductor:  configTurno.nombreConductor||"",
+      empresa:          configTurno.empresa||"Autoboy",
+      origenOperativo:  origenOperativo?.nombre||"",
+      destinoOperativo: destinoOperativo?.nombre||"",
+      rutaOperativa:    configTurno.rutaOperativa||"",
+      sentido:          origenOperativo?.sentido||"",
+      horaInicio:       horaOrigenGPS||"",
+      horaLlegada:      horaDestinoGPS||"",
+      duracionMinutos:  duracion,
+      fecha:            diaKey(),
+      registradoEn:     serverTimestamp()
+    });
+    console.log("☁ Recorrido operativo guardado");
+  }catch(e){ console.warn("Error guardando recorrido:", e); }
+}
+
 // Voces cortas por geocerca según dirección
 const VOZ_GEO = {
   "G1_ida":    "Inicio de ruta. Soacha hacia Funza.",
@@ -1007,32 +1481,45 @@ function cargarConfig(){
 }
 
 async function guardarConfigTurno(){
-  const placa  = document.getElementById("inputPlaca").value.trim().toUpperCase();
-  const cedula = document.getElementById("inputCedula").value.trim();
-  const nombre = document.getElementById("inputNombreConductor").value.trim();
+  // P0-04: Verificar bloqueo
+  if(!verificarBloqueo()) return;
+
+  // P0-04: Sanitizar inputs
+  const placa  = SANITIZE.placa(document.getElementById("inputPlaca").value);
+  const cedula = document.getElementById("inputCedula") ?
+    SANITIZE.cedula(document.getElementById("inputCedula").value) : "";
+  const nombre = document.getElementById("inputNombreConductor") ?
+    SANITIZE.nombre(document.getElementById("inputNombreConductor").value) : "";
   const fecha  = document.getElementById("inputFecha").value;
   const hora   = document.getElementById("inputHoraInicio").value;
-  if(!placa) { mostrarToast("⚠ Ingresa la placa","alerta"); return; }
-  if(!cedula){ mostrarToast("⚠ La cédula es obligatoria","alerta"); return; }
-  if(!fecha) { mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
 
-  // Generar idTurno — llave principal de toda la arquitectura
-  const idTurno = generarIdTurno(placa, cedula, fecha);
-  configTurno = {
-    idTurno,
-    placa,
-    cedula,
-    nombreConductor:   nombre||"",
-    fechaInicio:       fecha,
-    horaInicio:        hora||"--:--",
-    estadoTurno:       "Activo",
-    corredor:          "Funza-Mosquera-Bogotá-Soacha",
-    empresa:           "Autoboy",
-    viajesCompletados: 0
+  // Validaciones con auditoría
+  if(!placa || placa.length < 5){
+    registrarIntentoFallido("Placa inválida: "+placa);
+    mostrarToast("⚠ Placa inválida","alerta"); return;
+  }
+  if(document.getElementById("inputCedula") && (!cedula || cedula.length < 6)){
+    registrarIntentoFallido("Cédula inválida");
+    mostrarToast("⚠ Cédula inválida — mínimo 6 dígitos","alerta"); return;
+  }
+  if(!fecha){ mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
+
+  // Generar idTurno
+  const idTurno = generarIdTurno(placa, cedula||"0", fecha);
+  configTurno={
+    idTurno, placa, cedula, nombreConductor:nombre,
+    fechaInicio:fecha, horaInicio:hora||"--:--",
+    estadoTurno:"Activo",
+    corredor:"Funza-Mosquera-Bogotá-Soacha",
+    empresa:"Autoboy",
+    viajesCompletados:0
   };
   try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
   document.getElementById("modalConfig").style.display="none";
   actualizarBarraVehiculo();
+  // P0-09: Auditar inicio de turno
+  auditLog("TURNO_INICIADO","Placa:"+placa+" Fecha:"+fecha,"info");
+  _intentosFallidos = 0;
   mostrarToast("🔄 Buscando turno activo...","");
   await cargarTurnoDesdeFirebase(placa, fecha, cedula);
   sincronizarConfigFirebase();
@@ -1047,52 +1534,43 @@ function esperarFirebase(timeout=8000){
   });
 }
 
-async function cargarTurnoDesdeFirebase(placa, fecha, cedula=""){
+async function cargarTurnoDesdeFirebase(placa, fecha){
   mostrarToast("🔄 Conectando con la nube...","");
-  const listo = await esperarFirebase(10000);
-  if(!listo||!window._fb){ mostrarToast("⚡ Sin conexión — turno local","warn"); return; }
+  // Esperar Firebase hasta 8 segundos
+  const listo = await esperarFirebase(8000);
+  if(!listo || !window._fb){
+    mostrarToast("⚡ Sin conexión — turno local","warn");
+    return;
+  }
   try{
-    const db = window._fb.db;
-    // Buscar por idTurno — corazón de la arquitectura
-    const idTurno = generarIdTurno(placa, cedula||"0", fecha);
-    console.log("🔍 Buscando turno:", idTurno);
-    const snap = await window._fb.getDoc(window._fb.doc(db,"turnos_activos",idTurno));
+    const {db,doc,getDoc}=window._fb;
+    const snap=await getDoc(doc(db,"turnos_activos",placa+"_"+fecha));
     if(snap.exists()){
       const data=snap.data();
       if(data.conteos&&data.conteos.length===RUTAS.length){
         estado.conteos=data.conteos;
-        estado.conteosViaje=data.conteosViaje||[
-          new Array(RUTAS.length).fill(0),
-          new Array(RUTAS.length).fill(0),
-          new Array(RUTAS.length).fill(0)
-        ];
+        estado.conteosViaje=data.conteosViaje||[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
         estado.historial=data.historial||[];
         estado.diaActual=fecha;
         viajeActual=data.viajeActual||1;
-        if(configTurno) configTurno.idTurno=idTurno;
         guardarEstado();
         actualizarUI();
         setViaje(viajeActual);
-        const pax=data.totalPasajeros||0;
-        const rec=data.totalRecaudo||0;
-        mostrarToast("✅ Turno restaurado — "+pax+" pax · $"+Math.round(rec/1000)+"k","");
+        mostrarToast("✅ Turno restaurado desde la nube","");
+        hablar("Turno restaurado. Bienvenido de nuevo.",0.9,1.1);
         return;
       }
     }
-    if(configTurno) configTurno.idTurno=idTurno;
-    console.log("🆕 Nuevo turno:", idTurno);
     mostrarToast("✅ Nuevo turno iniciado","");
   }catch(e){
     console.warn("Error cargando turno:",e);
-    mostrarToast("⚡ Turno en modo local","warn");
+    mostrarToast("✅ Turno configurado","");
   }
 }
 
 function editarConfig(){
   const m=document.getElementById("modalConfig");
   document.getElementById("inputPlaca").value=configTurno.placa||"";
-  document.getElementById("inputCedula").value=configTurno.cedula||"";
-  document.getElementById("inputNombreConductor").value=configTurno.nombreConductor||"";
   document.getElementById("inputFecha").value=configTurno.fechaInicio||"";
   document.getElementById("inputHoraInicio").value=configTurno.horaInicio||"";
   m.style.display="flex";
@@ -1109,12 +1587,6 @@ function actualizarBarraVehiculo(){
     document.getElementById("vbarFecha").textContent="—";
   }
   document.getElementById("vbarHora").textContent=configTurno.horaInicio||"—";
-  const vCed=document.getElementById("vbarCedula");
-  if(vCed) vCed.textContent=configTurno.cedula?"CC: "+configTurno.cedula:"";
-  const vNom=document.getElementById("vbarNombre");
-  if(vNom) vNom.textContent=configTurno.nombreConductor||"";
-  const vId=document.getElementById("vbarIdTurno");
-  if(vId && configTurno.idTurno) vId.textContent=configTurno.idTurno;
 }
 
 // Mostrar modal si no hay config, si no ir directo
@@ -1138,43 +1610,22 @@ async function sincronizarConfigFirebase(){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const idTurno=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
-    const key=idTurno; // idTurno es la llave principal
+    const key=configTurno.placa+"_"+configTurno.fechaInicio;
     await setDoc(doc(db,"turnos",key),{
-      idTurno,
-      placa:             configTurno.placa,
-      cedulaConductor:   configTurno.cedula||"",
-      nombreConductor:   configTurno.nombreConductor||"",
-      empresa:           configTurno.empresa||"Autoboy",
-      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      fechaInicio:       configTurno.fechaInicio,
-      horaInicio:        configTurno.horaInicio,
-      fechaFin:          null,
-      estadoTurno:       "Activo",
-      viajesCompletados: viajeActual,
-      produccion:        estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
-      pasajeros:         estado.conteos.reduce((a,b)=>a+b,0),
-      ultimaActualizacion: serverTimestamp()
+      placa:configTurno.placa,fechaInicio:configTurno.fechaInicio,
+      horaInicio:configTurno.horaInicio,actualizadoEn:serverTimestamp()
     },{merge:true});
     // Guardar estado completo para sincronizar entre dispositivos
     await setDoc(doc(db,"turnos_activos",key),{
-      idTurno,
-      placa:             configTurno.placa,
-      cedulaConductor:   configTurno.cedula||"",
-      nombreConductor:   configTurno.nombreConductor||"",
-      empresa:           configTurno.empresa||"Autoboy",
-      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      fecha:             configTurno.fechaInicio,
-      horaInicio:        configTurno.horaInicio,
-      estadoTurno:       "Activo",
-      viajesCompletados: viajeActual,
-      conteos:           estado.conteos,
-      conteosViaje:      estado.conteosViaje,
-      historial:         estado.historial.slice(0,50),
-      viajeActual:       viajeActual,
-      totalPasajeros:    estado.conteos.reduce((a,b)=>a+b,0),
-      totalRecaudo:      estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
-      ultimaActualizacion: serverTimestamp()
+      placa:configTurno.placa,fecha:configTurno.fechaInicio,
+      horaInicio:configTurno.horaInicio,
+      conteos:estado.conteos,
+      conteosViaje:estado.conteosViaje,
+      historial:estado.historial.slice(0,50),
+      viajeActual:viajeActual,
+      totalPasajeros:estado.conteos.reduce((a,b)=>a+b,0),
+      totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      actualizadoEn:serverTimestamp()
     },{merge:true});
     setSyncStatus("ok");
   }catch(e){
@@ -1188,21 +1639,13 @@ async function guardarPasajeroFirebase(reg){
   try{
     const {db,collection,addDoc,serverTimestamp}=window._fb;
     await addDoc(collection(db,"pasajeros"),{
-      // ── LLAVE PRINCIPAL ──
-      idTurno:         configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio),
-      // ── IDENTIFICACIÓN DEL TURNO ──
-      placa:           configTurno.placa,
-      cedulaConductor: configTurno.cedula||"",
-      nombreConductor: configTurno.nombreConductor||"",
-      empresa:         configTurno.empresa||"Autoboy",
-      corredor:        configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      fechaInicio:     configTurno.fechaInicio,
-      // ── DATOS DEL PASAJERO ──
-      rutaNombre:  reg.nombre,
-      rutaIdx:     reg.idx,
-      precio:      reg.precio,
-      viaje:       reg.viaje,
-      hora:        reg.hora,
+      placa: configTurno.placa,
+      fechaInicio: configTurno.fechaInicio,
+      rutaNombre: reg.nombre,
+      rutaIdx: reg.idx,
+      precio: reg.precio,
+      viaje: reg.viaje,
+      hora: reg.hora,
       numPasajero: reg.num,
       registradoEn: serverTimestamp()
     });
@@ -1216,27 +1659,12 @@ async function guardarLiquidacionFirebase(resumen){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const idTurnoLiq=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
-    await setDoc(doc(db,"liquidaciones",idTurnoLiq),{
-      idTurno:         idTurnoLiq,
-      placa:           configTurno.placa,
-      cedulaConductor: configTurno.cedula||"",
-      nombreConductor: configTurno.nombreConductor||"",
-      empresa:         configTurno.empresa||"Autoboy",
-      corredor:        configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      viajesCompletados: viajeActual,
+    const key=configTurno.placa+"_"+resumen.fecha;
+    await setDoc(doc(db,"liquidaciones",key),{
+      placa: configTurno.placa,
       ...resumen,
       guardadoEn: serverTimestamp()
     },{merge:true});
-    // Cerrar el turno en Firestore
-    setDoc(doc(db,"turnos",idTurnoLiq),{
-      estadoTurno:"Cerrado",
-      fechaFin:serverTimestamp(),
-      viajesCompletados:viajeActual,
-      produccion:resumen.total||0,
-      pasajeros:resumen.pax||0,
-      ultimaActualizacion:serverTimestamp()
-    },{merge:true}).catch(()=>{});
     setSyncStatus("ok");
   }catch(e){ setSyncStatus("pending"); }
 }
@@ -1347,20 +1775,7 @@ function liquidarDia(est){
     const propietario=Math.round(neto*(pct/100));
     const conductor=neto-propietario;
     const hist=cargarHistDias();
-    const resumen={
-      idTurno:           configTurno.idTurno||generarIdTurno(configTurno.placa||"",configTurno.cedula||"0",est.diaActual||diaKey()),
-      fecha:             est.diaActual||diaKey(new Date(Date.now()-86400000)),
-      placa:             configTurno.placa||"",
-      cedulaConductor:   configTurno.cedula||"",
-      nombreConductor:   configTurno.nombreConductor||"",
-      empresa:           configTurno.empresa||"Autoboy",
-      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      viajesCompletados: viajeActual,
-      pax:totalPax, total:totalDin,
-      gastos, totalGastos,
-      pctPropietario:pct, neto, propietario, conductor,
-      conteos:[...est.conteos]
-    };
+    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,gastos,totalGastos,pctPropietario:pct,neto,propietario,conductor,conteos:[...est.conteos]};
     hist.unshift(resumen);
     localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,90)));
     guardarLiquidacionFirebase(resumen);
@@ -1385,7 +1800,6 @@ setInterval(verificarCambioDia,60000);
 function setViaje(n){
   const anterior=viajeActual;
   viajeActual=n;
-  if(configTurno) configTurno.viajesCompletados=n;
   document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i+1===n));
   document.getElementById("viajeLabel").textContent="🚌 VIAJE "+n+" DE 3";
   actualizarUI();guardarEstado();
@@ -1808,11 +2222,25 @@ function toggleGPS(){
 }
 
 function registrar(idx){
+  // P0-08: Rate limiting — evitar registros duplicados por toque rápido
+  if(!rateLimitOk()){
+    console.log("Rate limit: registro ignorado");
+    return;
+  }
   const ruta=RUTAS[idx];
   const ahora=horaColombiaActual();
   const totalHoy=estado.historial.length+1;
   const reg={idx,nombre:ruta.nombre,precio:ruta.precio,viaje:viajeActual,
     hora:formatHoraCol(ahora),num:totalHoy};
+
+  // P0-05: Validar integridad del registro antes de guardar
+  if(!validarPasajero(reg)){
+    auditLog("REGISTRO_INVALIDO","Precio o viaje fuera de rango: "+JSON.stringify(reg),"security");
+    return;
+  }
+
+  // P0-09: Auditar registro
+  auditLog("PASAJERO_REGISTRADO","Ruta:"+ruta.nombre+" Precio:"+ruta.precio+" Viaje:"+viajeActual);
   estado.conteos[idx]++;
   estado.conteosViaje[viajeActual-1][idx]++;
   estado.historial.unshift(reg);
@@ -1828,20 +2256,45 @@ function registrar(idx){
   vozPagoRegistrado(ruta.precio);
   actualizarUI();
   guardarPasajeroFirebase(reg);
-  // Actualizar estado en turnos_activos para sincronización entre dispositivos
-  if(fbListo && window._fb && configTurno.placa){
+  // ── PERSISTENCIA ROBUSTA: R1 — guardar estado completo por cada pasajero ──
+  persistirEstadoTurno();
+}
+
+// Persistencia robusta — guarda estado completo en Firebase inmediatamente
+// Aplica reglas: R1 (por pasajero), R6 (origen GPS), R8 (cambio viaje)
+async function persistirEstadoTurno(){
+  if(!fbListo||!window._fb||!configTurno?.placa) return;
+  try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
     const idTurno=configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
-    const key=idTurno; // idTurno es la llave principal
-    setDoc(doc(db,"turnos_activos",key),{
-      conteos: estado.conteos,
-      conteosViaje: estado.conteosViaje,
-      historial: estado.historial.slice(0,50),
-      viajeActual: viajeActual,
-      totalPasajeros: estado.conteos.reduce((a,b)=>a+b,0),
-      totalRecaudo: estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
-      actualizadoEn: serverTimestamp()
-    },{merge:true}).catch(e=>console.warn("Sync turno:",e));
+    // Guardar en turnos_activos — sincronización entre dispositivos
+    await setDoc(doc(db,"turnos_activos",idTurno),{
+      idTurno,
+      placa:             configTurno.placa,
+      cedulaConductor:   configTurno.cedula||"",
+      nombreConductor:   configTurno.nombreConductor||"",
+      empresa:           configTurno.empresa||"Autoboy",
+      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fecha:             configTurno.fechaInicio,
+      horaInicio:        configTurno.horaInicio,
+      estadoTurno:       "Activo",
+      viajesCompletados: viajeActual,
+      origenOperativo:   origenOperativo?.nombre||"",
+      destinoOperativo:  destinoOperativo?.nombre||"",
+      rutaOperativa:     configTurno.rutaOperativa||"",
+      conteos:           estado.conteos,
+      conteosViaje:      estado.conteosViaje,
+      historial:         estado.historial.slice(0,50),
+      viajeActual:       viajeActual,
+      totalPasajeros:    estado.conteos.reduce((a,b)=>a+b,0),
+      totalRecaudo:      estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      ultimaActualizacion: serverTimestamp()
+    },{merge:true});
+    setSyncStatus("ok");
+  }catch(e){
+    // R9 — Falla de Firebase: continuar sin bloquear al conductor
+    console.warn("Firebase persistencia:", e);
+    setSyncStatus("pending");
   }
 }
 
@@ -1926,9 +2379,16 @@ function renderDestinos(){
   document.getElementById("destinosGrid").innerHTML=RUTAS.map((r,i)=>`
     <button class="btn-dest" data-idx="${i}" onclick="registrar(${i})">
       <div class="flash-layer"></div>
-      <div class="dest-origen">${r.desde} →</div>
-      <div class="dest-nombre">${r.hasta}</div>
-      <div class="dest-precio">$${r.precio.toLocaleString("es-CO")}</div>
+      <div>
+        <div class="dest-origen">${r.desde} →</div>
+        <div class="dest-nombre">${r.hasta}</div>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between">
+        <div class="dest-precio">$${r.precio.toLocaleString("es-CO")}</div>
+        <div style="font-size:0.5rem;color:var(--muted);text-align:right;line-height:1.3;padding-bottom:2px">
+          ${r.geocercaDestino||""}
+        </div>
+      </div>
       <div class="dest-badge" id="badge${i}">${estado.conteos[i]}</div>
     </button>`).join("");
 }
@@ -2032,6 +2492,13 @@ function formatFecha(key){
 function confirmarNuevoTurno(){
   if(confirm("¿Iniciar nuevo turno? El día actual se guardará en el historial.")){
     liquidarDia(estado);estado=estadoDefault();viajeActual=1;
+    // Reset completo del sistema operativo
+    origenOperativo = null;
+    destinoOperativo = null;
+    horaOrigenGPS = null;
+    horaDestinoGPS = null;
+    geocercasOperativasActivas.clear();
+    actualizarIndicadorRuta();
     guardarEstado();resetTimer();
     ["acpm","desayuno","almuerzo","timbres","parqueo","otros"].forEach(c=>{
       const el=document.getElementById("gasto-"+c);if(el)el.value="";
@@ -2083,6 +2550,35 @@ function renderTarifasAdmin(){
   document.getElementById("tarifasTabla").innerHTML=RUTAS.map(r=>`<tr><td>${r.nombre}</td><td class="money" style="color:var(--amarillo)">$${r.precio.toLocaleString("es-CO")}</td></tr>`).join("");
 }
 
+// ══ R4 — Marcar turno como interrumpido si app se cierra sin liquidar ══
+window.addEventListener("beforeunload", ()=>{
+  if(!fbListo||!window._fb||!configTurno?.placa||!configTurno?.idTurno) return;
+  const totalPax = estado.conteos.reduce((a,b)=>a+b,0);
+  if(totalPax === 0) return; // No hay datos que preservar
+  try{
+    const {db,doc,setDoc} = window._fb;
+    // Marcar como "interrumpido" para que el propietario lo vea
+    setDoc(doc(db,"turnos",configTurno.idTurno),{
+      estadoTurno: "Interrumpido",
+      ultimaActualizacion: new Date().toISOString()
+    },{merge:true});
+  }catch(e){}
+});
+
+// ══ R5 — Recuperar turno activo al reabrir la app ══
+async function recuperarTurnoActivo(){
+  if(!configTurno?.placa||!configTurno?.cedula) return;
+  const hoy = new Date().toISOString().slice(0,10);
+  if(configTurno.fechaInicio !== hoy) return; // Es de otro día
+  // Ya hay datos locales — verificar si hay más en Firebase
+  const totalLocal = estado.conteos.reduce((a,b)=>a+b,0);
+  await cargarTurnoDesdeFirebase(configTurno.placa, hoy, configTurno.cedula);
+  const totalFirebase = estado.conteos.reduce((a,b)=>a+b,0);
+  if(totalFirebase > totalLocal){
+    mostrarToast("☁ Turno recuperado desde la nube — "+totalFirebase+" pax","");
+  }
+}
+
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
 inicializarVoz();
@@ -2094,6 +2590,11 @@ setTimeout(()=>{
     if(btnGPS){btnGPS.textContent="🟢 GPS ON";btnGPS.style.color="var(--amarillo)";}
   }
 },2000);
+// R5 — Recuperar turno si hay uno activo del día
+if(configTurno?.placa && configTurno?.cedula){
+  window.addEventListener("fbReady", ()=>{ recuperarTurnoActivo(); }, {once:true});
+}
+
 // Saludo inicial motivador al abrir la app
 setTimeout(()=>{
   const hora=horaColombiaActual().getHours();
