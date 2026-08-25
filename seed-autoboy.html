@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TUNIM — Seed Autoboy</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getFirestore, doc, setDoc, collection, addDoc, getDocs, query, where, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+  authDomain: "tunim-9064e.firebaseapp.com",
+  projectId: "tunim-9064e",
+  storageBucket: "tunim-9064e.firebasestorage.app",
+  messagingSenderId: "948598556990",
+  appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+};
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+window._fb = { db, doc, setDoc, collection, addDoc, getDocs, query, where, serverTimestamp };
+window._fbReady = false;
+
+signInAnonymously(auth).then(()=>{
+  window._fbReady = true;
+  window.dispatchEvent(new Event("fbReady"));
+}).catch(()=>{
+  window._fbReady = true;
+  window.dispatchEvent(new Event("fbReady"));
+});
+</script>
+
+<style>
+:root{--bg:#06090D;--surface:#0D1117;--surface2:#131920;--border:#1C2733;--text:#E8EDF2;--muted:#5A6A7A;--amarillo:#F5C800;--verde:#00C47A;--rojo:#E8354F;--azul:#2B6CB0;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;padding:20px;max-width:700px;margin:0 auto}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:4px;margin-bottom:4px}
+.logo span{color:var(--amarillo)}
+.sub{font-size:0.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:12px}
+.card-head{padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:0.6rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.card-body{padding:14px}
+.log-item{font-family:'JetBrains Mono',monospace;font-size:0.72rem;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px}
+.log-ok{color:var(--verde)} .log-err{color:var(--rojo)} .log-info{color:var(--amarillo)} .log-muted{color:var(--muted)}
+.btn{padding:12px 20px;border:none;border-radius:10px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;transition:opacity 0.2s}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-primary{background:var(--amarillo);color:#000}
+.btn-danger{background:var(--rojo);color:#fff}
+.btn-secondary{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.progress{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;background:var(--verde);border-radius:3px;transition:width 0.3s}
+.stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.78rem}
+.stat-val{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--amarillo)}
+</style>
+</head>
+<body>
+
+<div class="logo">TU<span>NIM</span></div>
+<div class="sub">Seed Autoboy — Carga inicial de datos en Firestore</div>
+
+<div class="card">
+  <div class="card-head">Estado de Firebase</div>
+  <div class="card-body">
+    <div class="stat"><span>Conexión</span><span class="stat-val" id="stConn">Conectando...</span></div>
+    <div class="stat"><span>Proyecto</span><span class="stat-val">tunim-9064e</span></div>
+    <div class="stat"><span>Empresa</span><span class="stat-val">Autoboy S.A.</span></div>
+    <div class="stat"><span>Corredor</span><span class="stat-val">Funza-Mosquera-Bogotá-Soacha</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    Datos a cargar
+    <span id="progText" style="font-size:0.6rem;color:var(--verde)">0/0</span>
+  </div>
+  <div class="card-body">
+    <div class="stat"><span>Empresa</span><span class="stat-val">1 documento</span></div>
+    <div class="stat"><span>Corredor</span><span class="stat-val">1 documento</span></div>
+    <div class="stat"><span>Tarifas</span><span class="stat-val">7 documentos</span></div>
+    <div class="stat"><span>Geocercas tarifas</span><span class="stat-val">10 documentos</span></div>
+    <div class="stat"><span>Geocercas operativas</span><span class="stat-val">5 documentos</span></div>
+    <div class="stat"><span>Vehículo ejemplo</span><span class="stat-val">1 documento</span></div>
+    <div class="progress"><div class="progress-fill" id="progBar" style="width:0%"></div></div>
+  </div>
+</div>
+
+<div style="display:flex;gap:10px;margin-bottom:12px">
+  <button class="btn btn-primary" id="btnSeed" onclick="ejecutarSeed()" disabled>▶ CARGAR DATOS AUTOBOY</button>
+  <button class="btn btn-secondary" onclick="verificarDatos()">🔍 VERIFICAR</button>
+</div>
+
+<div class="card">
+  <div class="card-head">Log de ejecución</div>
+  <div class="card-body" id="logContainer" style="max-height:300px;overflow-y:auto">
+    <div class="log-item log-muted"><span>⏳</span><span>Esperando conexión Firebase...</span></div>
+  </div>
+</div>
+
+<script>
+// ══ DATOS COMPLETOS DE AUTOBOY — Empresa de referencia TUNIM ══
+const EMPRESA_ID   = "autoboy";
+const CORREDOR_ID  = "funza-mosquera-bogota-soacha";
+
+const EMPRESA_DATA = {
+  id:             "autoboy",
+  nombre:         "Autoboy S.A.",
+  nit:            "860007335-1",
+  ciudad:         "Funza, Cundinamarca",
+  correo:         "",
+  estado:         "activo",
+  planTunim:      "pro",
+  viajesPorTurno: 3,
+  metaDiaria:     700000,
+  cuotaDiaria:    500000,
+  salarioBase:    1750000,
+  rodamiento:     4500000,
+  mantenimiento:  2000000,
+  corridorId:     CORREDOR_ID,
+  creadoEn:       "ACCESVIAL-2026"
+};
+
+const CORREDOR_DATA = {
+  id:              CORREDOR_ID,
+  empresaId:       EMPRESA_ID,
+  nombre:          "Funza · Mosquera · Bogotá · Soacha",
+  descripcion:     "Corredor intermunicipal Sabana de Bogotá — corredor de referencia TUNIM",
+  configuradoPor:  "ACCESVIAL",
+  version:         "1.0",
+  geocercasPDF:    "TUNIM_Premium_Geocercas_v1.pdf",
+  creadoEn:        "ACCESVIAL-2026"
+};
+
+const TARIFAS_DATA = [
+  {
+    id:              "autoboy-soacha-bosa-2300",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Soacha → Bosa Estación",
+    desde:           "Soacha",
+    hasta:           "Bosa",
+    precio:          2300,
+    geocercaOrigen:  "G1",
+    geocercaDestino: "G2",
+    activo:          true,
+    orden:           1
+  },
+  {
+    id:              "autoboy-soacha-villavicencio-3300",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Soacha → Av. Villavicencio",
+    desde:           "Soacha",
+    hasta:           "Bogotá",
+    precio:          3300,
+    geocercaOrigen:  "G1",
+    geocercaDestino: "G3",
+    activo:          true,
+    orden:           2
+  },
+  {
+    id:              "autoboy-soacha-riobogota-3700",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Soacha → Río Bogotá",
+    desde:           "Soacha",
+    hasta:           "Bogotá",
+    precio:          3700,
+    geocercaOrigen:  "G1",
+    geocercaDestino: "G4",
+    activo:          true,
+    orden:           3
+  },
+  {
+    id:              "autoboy-soacha-funza-8000",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Soacha → Funza/Mosquera",
+    desde:           "Soacha",
+    hasta:           "Funza",
+    precio:          8000,
+    geocercaOrigen:  "G1",
+    geocercaDestino: "G7",
+    activo:          true,
+    orden:           4
+  },
+  {
+    id:              "autoboy-bogota-funza-7000",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Bogotá → Funza/Mosquera",
+    desde:           "Bogotá",
+    hasta:           "Funza",
+    precio:          7000,
+    geocercaOrigen:  "G5",
+    geocercaDestino: "G7",
+    activo:          true,
+    orden:           5
+  },
+  {
+    id:              "autoboy-riobogota-funza-3000",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Río Bogotá → Funza/Mosquera",
+    desde:           "Río Bogotá",
+    hasta:           "Funza",
+    precio:          3000,
+    geocercaOrigen:  "G4",
+    geocercaDestino: "G8",
+    activo:          true,
+    orden:           6
+  },
+  {
+    id:              "autoboy-planadas-portal-3400",
+    empresaId:       EMPRESA_ID,
+    corridorId:      CORREDOR_ID,
+    nombre:          "Planadas → Portal Dorado",
+    desde:           "Planadas",
+    hasta:           "Bogotá",
+    precio:          3400,
+    geocercaOrigen:  "G9",
+    geocercaDestino: "G10",
+    activo:          true,
+    orden:           7
+  }
+];
+
+const GEOCERCAS_TARIFAS_DATA = [
+  { id:"G1",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G1",  nombre:"Soacha — Zona origen",      lat:4.5712403,  lng:-74.2163023, radio:800, esOrigen:true,        tarifas:[2300,3300,3700,8000] },
+  { id:"G2",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G2",  nombre:"Bosa Estación",              lat:4.595778,   lng:-74.182926,  radio:350, tarifas:[2300] },
+  { id:"G3",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G3",  nombre:"Av. Villavicencio / 1a Mayo",lat:4.617851,   lng:-74.163855,  radio:350, tarifas:[3300] },
+  { id:"G4",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G4",  nombre:"Río Bogotá — Puente Cl13",  lat:4.696481,   lng:-74.174446,  radio:500, esFrontera:true,      tarifas:[3700] },
+  { id:"G5",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G5",  nombre:"Bosa La Despensa",           lat:4.6178,     lng:-74.1789,    radio:400, esOrigenBogota:true,  tarifas:[7000] },
+  { id:"G6",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G6",  nombre:"Peaje Calle 13",             lat:4.699025,   lng:-74.181510,  radio:300, esValidacion:true,    tarifas:[7000,8000] },
+  { id:"G7",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G7",  nombre:"Villa Paul — Funza",         lat:4.7420775,  lng:-74.2275960, radio:600, esDestino:true,       tarifas:[7000,8000] },
+  { id:"G8",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G8",  nombre:"INPEC — Funza/Mosquera",     lat:4.7349630,  lng:-74.1860322, radio:400, esDestino:true,       tarifas:[7000,8000] },
+  { id:"G9",  corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G9",  nombre:"Planadas",                   lat:4.615282,   lng:-74.213917,  radio:400, esRutaEspecial:true,  tarifas:[3400], pendienteCoord:true },
+  { id:"G10", corridorId:CORREDOR_ID, empresaId:EMPRESA_ID, codigo:"G10", nombre:"Portal Dorado",              lat:4.6944,     lng:-74.1478,    radio:350, esDestinoEspecial:true,tarifas:[3400], pendienteCoord:true }
+];
+
+const GEOCERCAS_OPERATIVAS_DATA = [
+  {
+    id:                  "san_humberto",
+    corridorId:          CORREDOR_ID,
+    empresaId:           EMPRESA_ID,
+    nombre:              "San Humberto",
+    lat:                 4.5712403,
+    lng:                 -74.2163023,
+    radio:               800,
+    tipo:                "origen",
+    sentido:             "ida",
+    destinosEsperados:   ["villa_paul"],
+    destinoPredecible:   true,
+    nota:                "Salida Soacha zona sur"
+  },
+  {
+    id:                  "llanos",
+    corridorId:          CORREDOR_ID,
+    empresaId:           EMPRESA_ID,
+    nombre:              "Llanos",
+    lat:                 4.5802205,
+    lng:                 -74.2456135,
+    radio:               600,
+    tipo:                "origen",
+    sentido:             "ida",
+    destinosEsperados:   ["inpec"],
+    destinoPredecible:   true,
+    nota:                "Salida Soacha zona Compartir Llanos"
+  },
+  {
+    id:                  "ciudad_verde",
+    corridorId:          CORREDOR_ID,
+    empresaId:           EMPRESA_ID,
+    nombre:              "Ciudad Verde",
+    lat:                 4.6155566,
+    lng:                 -74.2190992,
+    radio:               500,
+    tipo:                "origen_bifurcacion",
+    sentido:             "ida",
+    destinosEsperados:   ["villa_paul","inpec"],
+    destinoPredecible:   false,
+    nota:                "Bifurcación: Parque Mosquera=Villa Paul | Purina/Metro=INPEC"
+  },
+  {
+    id:                  "villa_paul",
+    corridorId:          CORREDOR_ID,
+    empresaId:           EMPRESA_ID,
+    nombre:              "Villa Paul",
+    lat:                 4.7420775,
+    lng:                 -74.2275960,
+    radio:               600,
+    tipo:                "origen_y_destino",
+    sentido:             "vuelta",
+    destinosEsperados:   ["san_humberto","ciudad_verde"],
+    destinoPredecible:   false,
+    nota:                "Paradero Villa Paul — Funza/Mosquera"
+  },
+  {
+    id:                  "inpec",
+    corridorId:          CORREDOR_ID,
+    empresaId:           EMPRESA_ID,
+    nombre:              "INPEC",
+    lat:                 4.7349630,
+    lng:                 -74.1860322,
+    radio:               400,
+    tipo:                "origen_y_destino",
+    sentido:             "vuelta",
+    destinosEsperados:   ["llanos","ciudad_verde"],
+    destinoPredecible:   false,
+    nota:                "Paradero INPEC — Funza/Mosquera"
+  }
+];
+
+const VEHICULO_EJEMPLO = {
+  placa:        "TAL-866",
+  orden:        "042",
+  empresaId:    EMPRESA_ID,
+  corridorId:   CORREDOR_ID,
+  estado:       "activo",
+  planTunim:    "pro",
+  fechaVencimiento: "2026-12-31",
+  creadoEn:     "ACCESVIAL-2026"
+};
+
+// ══ LOG ══
+function log(msg, tipo="info"){
+  const c = document.getElementById("logContainer");
+  const clases = {ok:"log-ok", err:"log-err", info:"log-info", muted:"log-muted"};
+  const iconos = {ok:"✅", err:"❌", info:"→", muted:"·"};
+  const el = document.createElement("div");
+  el.className = "log-item " + (clases[tipo]||"log-info");
+  el.innerHTML = `<span>${iconos[tipo]||"→"}</span><span>${msg}</span>`;
+  c.appendChild(el);
+  c.scrollTop = c.scrollHeight;
+}
+
+let total = 0, completado = 0;
+function progreso(n, t){
+  total = t;
+  completado = n;
+  const pct = Math.round(n/t*100);
+  document.getElementById("progBar").style.width = pct + "%";
+  document.getElementById("progText").textContent = n + "/" + t;
+}
+
+// ══ SEED PRINCIPAL ══
+async function ejecutarSeed(){
+  const btn = document.getElementById("btnSeed");
+  btn.disabled = true;
+  btn.textContent = "CARGANDO...";
+  document.getElementById("logContainer").innerHTML = "";
+
+  const TOTAL = 1 + 1 + TARIFAS_DATA.length + GEOCERCAS_TARIFAS_DATA.length + GEOCERCAS_OPERATIVAS_DATA.length + 1;
+  let n = 0;
+  progreso(n, TOTAL);
+
+  try{
+    const {db, doc, setDoc, serverTimestamp} = window._fb;
+
+    // 1. Empresa
+    log("Guardando empresa Autoboy S.A...");
+    await setDoc(doc(db,"empresas",EMPRESA_ID), {...EMPRESA_DATA, actualizadoEn:serverTimestamp()});
+    log("Empresa guardada", "ok");
+    progreso(++n, TOTAL);
+
+    // 2. Corredor
+    log("Guardando corredor Funza-Mosquera-Bogotá-Soacha...");
+    await setDoc(doc(db,"corredores",CORREDOR_ID), {...CORREDOR_DATA, actualizadoEn:serverTimestamp()});
+    log("Corredor guardado", "ok");
+    progreso(++n, TOTAL);
+
+    // 3. Tarifas
+    log("Guardando " + TARIFAS_DATA.length + " tarifas...");
+    for(const t of TARIFAS_DATA){
+      await setDoc(doc(db,"tarifas",t.id), {...t, actualizadoEn:serverTimestamp()});
+      log("  Tarifa: " + t.nombre + " → $" + t.precio.toLocaleString("es-CO"), "ok");
+      progreso(++n, TOTAL);
+    }
+
+    // 4. Geocercas de tarifas
+    log("Guardando " + GEOCERCAS_TARIFAS_DATA.length + " geocercas de tarifas...");
+    for(const g of GEOCERCAS_TARIFAS_DATA){
+      await setDoc(doc(db,"geocercas_tarifas", CORREDOR_ID+"_"+g.id), {...g, actualizadoEn:serverTimestamp()});
+      log("  " + g.codigo + " — " + g.nombre + (g.pendienteCoord?" ⚠️ coord. pendiente":""), g.pendienteCoord?"info":"ok");
+      progreso(++n, TOTAL);
+    }
+
+    // 5. Geocercas operativas
+    log("Guardando " + GEOCERCAS_OPERATIVAS_DATA.length + " geocercas operativas...");
+    for(const g of GEOCERCAS_OPERATIVAS_DATA){
+      await setDoc(doc(db,"geocercas_operativas", CORREDOR_ID+"_"+g.id), {...g, actualizadoEn:serverTimestamp()});
+      log("  " + g.nombre + " [" + g.tipo + "]", "ok");
+      progreso(++n, TOTAL);
+    }
+
+    // 6. Vehículo ejemplo
+    log("Guardando vehículo ejemplo TAL-866...");
+    await setDoc(doc(db,"vehiculos","TAL-866"), {...VEHICULO_EJEMPLO, actualizadoEn:serverTimestamp()});
+    log("Vehículo TAL-866 guardado", "ok");
+    progreso(++n, TOTAL);
+
+    log("", "muted");
+    log("🚀 SEED COMPLETADO — " + TOTAL + " documentos en Firestore", "ok");
+    log("Autoboy queda como empresa de referencia TUNIM", "ok");
+    btn.textContent = "✅ COMPLETADO";
+    btn.style.background = "var(--verde)";
+
+  }catch(e){
+    log("ERROR: " + e.message, "err");
+    btn.disabled = false;
+    btn.textContent = "▶ REINTENTAR";
+  }
+}
+
+// ══ VERIFICAR ══
+async function verificarDatos(){
+  const {db, collection, getDocs} = window._fb;
+  document.getElementById("logContainer").innerHTML = "";
+  log("Verificando colecciones en Firestore...", "info");
+
+  const cols = ["empresas","corredores","tarifas","geocercas_tarifas","geocercas_operativas","vehiculos"];
+  for(const col of cols){
+    try{
+      const snap = await getDocs(collection(db,col));
+      log(col + ": " + snap.size + " documentos", snap.size>0?"ok":"err");
+    }catch(e){
+      log(col + ": ERROR — " + e.message, "err");
+    }
+  }
+}
+
+// ══ INIT ══
+window.addEventListener("fbReady",()=>{
+  document.getElementById("stConn").textContent = "✅ Conectado";
+  document.getElementById("stConn").style.color = "var(--verde)";
+  document.getElementById("btnSeed").disabled = false;
+  log("Firebase conectado — listo para cargar datos", "ok");
+});
+</script>
+</body>
+</html>
