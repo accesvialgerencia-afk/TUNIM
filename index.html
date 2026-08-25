@@ -437,10 +437,16 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <div class="modal-sub">CONFIGURACIÓN DE TURNO · ACCESVIAL 2026</div>
     <label class="modal-label">Placa del vehículo</label>
     <input class="modal-input" id="inputPlaca" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+    <label class="modal-label">Cédula del conductor <span style="color:var(--rojo)">*</span></label>
+    <input class="modal-input" id="inputCedula" type="number" placeholder="12345678" autocomplete="off" style="letter-spacing:2px">
+    <label class="modal-label">Nombre del conductor <span style="color:var(--muted2);font-size:0.65rem">(opcional)</span></label>
+    <input class="modal-input" id="inputNombreConductor" type="text" placeholder="Juan Piravague" autocomplete="off" style="text-transform:capitalize">
     <label class="modal-label">Fecha de inicio de ruta</label>
     <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
     <label class="modal-label">Hora de inicio</label>
     <input class="modal-input" id="inputHoraInicio" type="time" autocomplete="off">
+    <!-- Estado de validación -->
+    <div id="modalEstado" style="display:none;padding:8px 12px;border-radius:8px;font-size:0.72rem;margin-top:4px;font-weight:600"></div>
     <button class="modal-btn" onclick="guardarConfigTurno()">▶ INICIAR TURNO</button>
   </div>
 </div>
@@ -783,6 +789,145 @@ const RUTAS=[
   // ── RUTA ESPECIAL PLANADAS ──
   {nombre:"Planadas → Portal Dorado",   desde:"Planadas",hasta:"Bogotá",  precio:3400, geocercaDestino:"G10"},
 ];
+
+// ══════════════════════════════════════════════════════════════
+// SPRINT 2 — VALIDACIÓN DE TURNO | TUNIM · ACCESVIAL 2026
+// Valida placa + cédula contra Firestore antes de iniciar
+// Carga tarifas y geocercas dinámicamente según la empresa
+// ══════════════════════════════════════════════════════════════
+
+// RUTAS dinámicas — se cargan desde Firestore según el corredor
+// Las hardcodeadas son el fallback para Autoboy mientras no haya datos en Firebase
+let RUTAS_DINAMICAS = null; // null = usar RUTAS hardcodeadas
+
+// Función principal de validación Sprint 2
+async function validarYCargarTurno(placa, cedula){
+  const est = document.getElementById("modalEstado");
+  const mostrarEst = (msg, tipo) => {
+    est.style.display = "block";
+    est.style.background = tipo==="ok"?"rgba(0,196,122,0.1)":tipo==="err"?"rgba(232,53,79,0.1)":"rgba(245,200,0,0.1)";
+    est.style.color = tipo==="ok"?"var(--verde)":tipo==="err"?"var(--rojo)":"var(--amarillo)";
+    est.style.border = "1px solid " + (tipo==="ok"?"var(--verde)":tipo==="err"?"var(--rojo)":"var(--amarillo)");
+    est.textContent = msg;
+  };
+
+  if(!window._fbReady||!window._fb){
+    mostrarEst("⚡ Sin conexión — modo local activado","warn");
+    return {ok:true, modo:"local", empresa:"Autoboy", corredor:"Funza-Mosquera-Bogotá-Soacha"};
+  }
+
+  try{
+    const {db, doc, getDoc, collection, query, where, getDocs} = window._fb;
+
+    // PASO 1 — Validar placa en vehiculos/
+    mostrarEst("🔍 Verificando vehículo...","warn");
+    const snapVeh = await getDoc(doc(db,"vehiculos",placa));
+
+    if(!snapVeh.exists()){
+      // Modo flexible — vehículo no registrado pero permitido (piloto Autoboy)
+      mostrarEst("⚠️ Vehículo no registrado — modo piloto","warn");
+      auditLog("VEHICULO_NO_REGISTRADO","Placa:"+placa,"warn");
+      return {ok:true, modo:"piloto", empresa:"Autoboy", corredor:"funza-mosquera-bogota-soacha", empresaNombre:"Autoboy"};
+    }
+
+    const veh = snapVeh.data();
+
+    // PASO 2 — Verificar suscripción vigente
+    if(veh.estado !== "activo"){
+      mostrarEst("❌ Vehículo suspendido — contacta ACCESVIAL","err");
+      auditLog("VEHICULO_SUSPENDIDO","Placa:"+placa+" Estado:"+veh.estado,"security");
+      registrarIntentoFallido("Vehículo suspendido: "+placa);
+      return {ok:false};
+    }
+
+    if(veh.fechaVencimiento){
+      const hoy = new Date().toISOString().slice(0,10);
+      if(hoy > veh.fechaVencimiento){
+        mostrarEst("❌ Suscripción vencida — contacta ACCESVIAL","err");
+        auditLog("SUSCRIPCION_VENCIDA","Placa:"+placa,"security");
+        return {ok:false};
+      }
+    }
+
+    // PASO 3 — Validar cédula en conductores/
+    mostrarEst("🔍 Verificando conductor...","warn");
+    if(cedula){
+      const snapCond = await getDoc(doc(db,"conductores",cedula));
+      if(snapCond.exists()){
+        const cond = snapCond.data();
+        if(cond.estado !== "activo"){
+          mostrarEst("❌ Conductor inactivo — contacta ACCESVIAL","err");
+          auditLog("CONDUCTOR_INACTIVO","CC:"+cedula,"security");
+          return {ok:false};
+        }
+        if(cond.empresaId !== veh.empresaId){
+          mostrarEst("❌ Conductor no autorizado para esta empresa","err");
+          auditLog("CONDUCTOR_EMPRESA_INVALIDA","CC:"+cedula+" Empresa:"+veh.empresaId,"security");
+          return {ok:false};
+        }
+      }
+      // Si conductor no está registrado — modo piloto (flexible para Autoboy)
+    }
+
+    // PASO 4 — Cargar empresa y corredor
+    mostrarEst("☁ Cargando configuración...","warn");
+    let empresaNombre = "Autoboy";
+    let corridorId = veh.corridorId || "funza-mosquera-bogota-soacha";
+
+    const snapEmp = await getDoc(doc(db,"empresas",veh.empresaId));
+    if(snapEmp.exists()){
+      empresaNombre = snapEmp.data().nombre || "Autoboy";
+    }
+
+    // PASO 5 — Cargar tarifas dinámicas desde Firestore
+    const snapTarifas = await getDocs(query(
+      collection(db,"tarifas"),
+      where("corridorId","==",corridorId),
+      where("activo","==",true)
+    ));
+
+    if(!snapTarifas.empty){
+      // Ordenar por campo orden
+      const tarifas = [];
+      snapTarifas.forEach(d => tarifas.push(d.data()));
+      tarifas.sort((a,b)=>(a.orden||0)-(b.orden||0));
+      // Convertir al formato de RUTAS
+      RUTAS_DINAMICAS = tarifas.map(t=>({
+        nombre:          t.nombre,
+        desde:           t.desde,
+        hasta:           t.hasta,
+        precio:          t.precio,
+        geocercaDestino: t.geocercaDestino||""
+      }));
+      console.log("☁ Tarifas cargadas desde Firestore:", RUTAS_DINAMICAS.length);
+    } else {
+      console.log("⚡ Usando tarifas hardcodeadas (fallback Autoboy)");
+    }
+
+    mostrarEst("✅ Vehículo autorizado — " + empresaNombre,"ok");
+    auditLog("TURNO_AUTORIZADO","Placa:"+placa+" Empresa:"+empresaNombre,"info");
+
+    return {
+      ok:        true,
+      modo:      "autorizado",
+      empresa:   veh.empresaId,
+      empresaNombre,
+      corredor:  corridorId,
+      planTunim: veh.planTunim||"basico"
+    };
+
+  }catch(e){
+    console.warn("Error validando turno:", e);
+    // R9 — Falla Firebase: continuar en modo local
+    mostrarEst("⚡ Error de conexión — modo local","warn");
+    return {ok:true, modo:"local", empresa:"Autoboy", corredor:"funza-mosquera-bogota-soacha", empresaNombre:"Autoboy"};
+  }
+}
+
+// Obtener RUTAS activas — dinámicas o hardcodeadas
+function getRutas(){
+  return RUTAS_DINAMICAS || RUTAS;
+}
 
 const META_MIN=28, MULTA1=10000, MULTAN=5000;
 const STORAGE_KEY="tunim_v3";
@@ -1493,32 +1638,46 @@ async function guardarConfigTurno(){
   const fecha  = document.getElementById("inputFecha").value;
   const hora   = document.getElementById("inputHoraInicio").value;
 
-  // Validaciones con auditoría
+  // Validaciones básicas con auditoría
   if(!placa || placa.length < 5){
     registrarIntentoFallido("Placa inválida: "+placa);
     mostrarToast("⚠ Placa inválida","alerta"); return;
   }
-  if(document.getElementById("inputCedula") && (!cedula || cedula.length < 6)){
+  if(!cedula || cedula.length < 6){
     registrarIntentoFallido("Cédula inválida");
-    mostrarToast("⚠ Cédula inválida — mínimo 6 dígitos","alerta"); return;
+    mostrarToast("⚠ Cédula obligatoria — mínimo 6 dígitos","alerta"); return;
   }
   if(!fecha){ mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
 
-  // Generar idTurno
-  const idTurno = generarIdTurno(placa, cedula||"0", fecha);
+  // ── SPRINT 2: Validar placa + cédula contra Firestore ──
+  const resultado = await validarYCargarTurno(placa, cedula);
+  if(!resultado.ok) return; // Bloqueado por validación
+
+  // Generar idTurno — llave principal
+  const idTurno = generarIdTurno(placa, cedula, fecha);
   configTurno={
-    idTurno, placa, cedula, nombreConductor:nombre,
-    fechaInicio:fecha, horaInicio:hora||"--:--",
-    estadoTurno:"Activo",
-    corredor:"Funza-Mosquera-Bogotá-Soacha",
-    empresa:"Autoboy",
-    viajesCompletados:0
+    idTurno,
+    placa,
+    cedula,
+    nombreConductor:   nombre||"",
+    fechaInicio:       fecha,
+    horaInicio:        hora||"--:--",
+    estadoTurno:       "Activo",
+    empresa:           resultado.empresaNombre||"Autoboy",
+    empresaId:         resultado.empresa||"autoboy",
+    corredor:          resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
+    planTunim:         resultado.planTunim||"basico",
+    modoAcceso:        resultado.modo||"local",
+    viajesCompletados: 0
   };
   try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
+
+  // Renderizar tarifas dinámicas si se cargaron
+  renderDestinos();
+
   document.getElementById("modalConfig").style.display="none";
   actualizarBarraVehiculo();
-  // P0-09: Auditar inicio de turno
-  auditLog("TURNO_INICIADO","Placa:"+placa+" Fecha:"+fecha,"info");
+  auditLog("TURNO_INICIADO","Placa:"+placa+" idTurno:"+idTurno+" Modo:"+resultado.modo,"info");
   _intentosFallidos = 0;
   mostrarToast("🔄 Buscando turno activo...","");
   await cargarTurnoDesdeFirebase(placa, fecha, cedula);
@@ -1570,6 +1729,9 @@ async function cargarTurnoDesdeFirebase(placa, fecha){
 
 function editarConfig(){
   const m=document.getElementById("modalConfig");
+  // Resetear estado de validación
+  const est=document.getElementById("modalEstado");
+  if(est) est.style.display="none";
   document.getElementById("inputPlaca").value=configTurno.placa||"";
   document.getElementById("inputFecha").value=configTurno.fechaInicio||"";
   document.getElementById("inputHoraInicio").value=configTurno.horaInicio||"";
@@ -1659,12 +1821,32 @@ async function guardarLiquidacionFirebase(resumen){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const key=configTurno.placa+"_"+resumen.fecha;
-    await setDoc(doc(db,"liquidaciones",key),{
-      placa: configTurno.placa,
+    // idTurno como llave principal — Sprint 2
+    const idTurnoLiq = configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
+    await setDoc(doc(db,"liquidaciones",idTurnoLiq),{
+      idTurno:           idTurnoLiq,
+      placa:             configTurno.placa,
+      cedulaConductor:   configTurno.cedula||"",
+      nombreConductor:   configTurno.nombreConductor||"",
+      empresa:           configTurno.empresa||"Autoboy",
+      empresaId:         configTurno.empresaId||"autoboy",
+      corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      viajesCompletados: viajeActual,
+      origenOperativo:   origenOperativo?.nombre||"",
+      destinoOperativo:  destinoOperativo?.nombre||"",
+      rutaOperativa:     configTurno.rutaOperativa||"",
       ...resumen,
       guardadoEn: serverTimestamp()
     },{merge:true});
+    // ── Cerrar turno en Firestore — estadoTurno + fechaFin ──
+    setDoc(doc(db,"turnos",idTurnoLiq),{
+      estadoTurno:       "Cerrado",
+      fechaFin:          serverTimestamp(),
+      viajesCompletados: viajeActual,
+      produccion:        resumen.total||0,
+      pasajeros:         resumen.pax||0,
+      ultimaActualizacion: serverTimestamp()
+    },{merge:true}).catch(()=>{});
     setSyncStatus("ok");
   }catch(e){ setSyncStatus("pending"); }
 }
@@ -2376,7 +2558,7 @@ async function confirmarDeshacer(){
 
 // ══ RENDER DESTINOS ══
 function renderDestinos(){
-  document.getElementById("destinosGrid").innerHTML=RUTAS.map((r,i)=>`
+  document.getElementById("destinosGrid").innerHTML=getRutas().map((r,i)=>`
     <button class="btn-dest" data-idx="${i}" onclick="registrar(${i})">
       <div class="flash-layer"></div>
       <div>
