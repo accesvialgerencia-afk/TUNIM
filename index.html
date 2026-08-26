@@ -29,7 +29,7 @@
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, enableIndexedDbPersistence }
+  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
@@ -48,11 +48,8 @@
   const db  = getFirestore(app);
   const auth = getAuth(app);
 
-  // Persistencia offline (no rompe si falla)
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') console.warn("Persistencia: múltiples pestañas abiertas");
-    else if (err.code === 'unimplemented') console.warn("El navegador no soporta persistencia offline");
-  });
+  // Persistencia offline — API moderna Firebase 11
+  // enableIndexedDbPersistence está deprecado en v11
 
   // Exponer globalmente para usar desde el script principal
   window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth };
@@ -934,6 +931,17 @@ const STORAGE_KEY="tunim_v3";
 const HIST_KEY="tunim_hist_v3";
 const CONFIG_KEY="tunim_config_v1";
 
+// ══ GENERADOR DE idTurno — CORAZÓN DE LA ARQUITECTURA TUNIM ══
+// Formato: TUN-{YYYYMMDD}-{PLACA}-{CEDULA}
+// Ejemplo: TUN-20260825-TAL866-12345678
+// Esta llave relaciona: turnos · pasajeros · liquidaciones · auditoría · IA
+function generarIdTurno(placa, cedula, fecha){
+  const p = (placa||"").toUpperCase().split("").filter(c=>"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".includes(c)).join("");
+  const f = (fecha||"").split("").filter(c=>"0123456789".includes(c)).join("");
+  const c = (cedula||"0").toString().split("").filter(c=>c>="0"&&c<="9").join("").slice(0,12);
+  return "TUN-"+f+"-"+p+"-"+c;
+}
+
 // ══════════════════════════════════════════════════════════════
 // SPRINT 0 — SEGURIDAD | TUNIM · ACCESVIAL 2026
 // Estándar: OWASP Top 10 + Ley 1581 Colombia
@@ -990,7 +998,7 @@ function validarPasajero(reg){
 
 // ── P0-08: RATE LIMITING — Máx 1 registro cada 2 segundos ──
 let _ultimoRegistro = 0;
-const RATE_LIMIT_MS = 2000;
+const RATE_LIMIT_MS = 800; // 800ms — permite marcación rápida de grupos
 
 function rateLimitOk(){
   const ahora = Date.now();
@@ -1056,27 +1064,16 @@ function auditLog(evento, detalle, nivel="info"){
 
 // ── DETECTOR DE INTENTOS SOSPECHOSOS ──
 let _intentosFallidos = 0;
-const MAX_INTENTOS = 5;
-let _bloqueadoHasta = 0;
 
+// Sin bloqueo por intentos — conductor no puede quedarse sin TUNIM en ruta
 function verificarBloqueo(){
-  if(Date.now() < _bloqueadoHasta){
-    const seg = Math.ceil((_bloqueadoHasta - Date.now())/1000);
-    mostrarToast("⚠️ Acceso bloqueado temporalmente. Espera "+seg+"s","alerta");
-    return false;
-  }
-  return true;
+  return true; // Siempre permitir
 }
 
 function registrarIntentoFallido(motivo){
   _intentosFallidos++;
   auditLog("INTENTO_FALLIDO", motivo, "security");
-  if(_intentosFallidos >= MAX_INTENTOS){
-    _bloqueadoHasta = Date.now() + 60000; // 60 segundos
-    _intentosFallidos = 0;
-    auditLog("ACCESO_BLOQUEADO", "Máximo de intentos alcanzado", "security");
-    mostrarToast("🔒 Acceso bloqueado 60 segundos por intentos fallidos","alerta");
-  }
+  // Solo registra — no bloquea al conductor
 }
 
 // ══ GEOCERCAS DEL CORREDOR — ACCESVIAL 2026 ══
@@ -1087,83 +1084,61 @@ function registrarIntentoFallido(motivo){
 // Ref: TUNIM_Premium_Geocercas_v1.pdf
 // ══════════════════════════════════════════════════════════
 const GEOCERCAS = [
+  // ══ GEOCERCAS OFICIALES — TUNIM Premium v1 | ACCESVIAL 2026 ══
+  // Fuente: TUNIM_Premium_Geocercas_v1.pdf
   {
-    codigo: "G1", nombre: "Soacha — Zona de origen",
-    lat: 4.5712403, lng: -74.2163023, radio: 800,
-    tarifa: 0,
-    descripcion: "Zona origen Soacha — cubre San Humberto, Llanos y Ciudad Verde",
-    esOrigen: true,
-    tarifas: []
+    codigo:"G1", nombre:"Soacha — Zona origen",
+    lat:4.5793, lng:-74.2172, radio:2000,
+    esOrigen:true, tarifas:[],
+    descripcion:"Origen: $2.300 / $3.300 / $3.700 / $8.000"
   },
   {
-    codigo: "G2", nombre: "Bosa Estación",
-    lat: 4.595778, lng: -74.182926, radio: 350,
-    tarifa: 2300,
-    descripcion: "Destino $2.300 — trayecto corto urbano Soacha ↔ Bosa",
-    tarifas: [2300]
+    codigo:"G2", nombre:"Bosa Estación",
+    lat:4.6297, lng:-74.1778, radio:400,
+    tarifas:[2300],
+    descripcion:"Destino $2.300 — límite corto. Pasajeros de $2.300 deben bajar aquí."
   },
   {
-    codigo: "G3", nombre: "Av. Villavicencio / 1a de Mayo",
-    lat: 4.617851, lng: -74.163855, radio: 350,
-    tarifa: 3300,
-    descripcion: "Destino $3.300 — ingreso intermedio a Bogotá",
-    tarifas: [3300]
+    codigo:"G3", nombre:"Av. Villavicencio / 1a de Mayo",
+    lat:4.6389, lng:-74.1556, radio:350,
+    tarifas:[3300],
+    descripcion:"Destino $3.300 — límite medio. Pasajeros de $3.300 deben bajar aquí."
   },
   {
-    codigo: "G4", nombre: "Río Bogotá — Puente Calle 13",
-    lat: 4.696481, lng: -74.174446, radio: 500,
-    tarifa: 3700,
-    descripcion: "PUNTO CRÍTICO — frontera urbano/intermunicipal. Separa 5 tarifas.",
-    tarifas: [3700],
-    esFrontera: true
+    codigo:"G4", nombre:"Río Bogotá — Puente Calle 13",
+    lat:4.6697, lng:-74.1833, radio:500,
+    tarifas:[3700], esFrontera:true,
+    descripcion:"PUNTO CRÍTICO — frontera urbano/intermunicipal. $3.700 baja en cualquier punto de Bogotá antes de aquí."
   },
   {
-    codigo: "G5", nombre: "Bosa La Despensa",
-    lat: 4.6178, lng: -74.1789, radio: 400,
-    tarifa: null,
-    descripcion: "Origen $7.000 desde Bogotá hacia Funza/Mosquera",
-    tarifas: [7000],
-    esOrigenBogota: true
+    codigo:"G5", nombre:"Bosa La Despensa",
+    lat:4.6178, lng:-74.1789, radio:400,
+    esOrigenBogota:true, tarifas:[7000],
+    descripcion:"Origen $7.000 desde Bogotá hacia Funza/Mosquera"
   },
   {
-    codigo: "G6", nombre: "Peaje Calle 13",
-    lat: 4.699025, lng: -74.181510, radio: 300,
-    tarifa: null,
-    descripcion: "Punto de validación — confirma trayecto largo $8.000",
-    tarifas: [7000, 8000],
-    esValidacion: true
+    codigo:"G6", nombre:"Peaje Calle 13",
+    lat:4.6756, lng:-74.1944, radio:300,
+    esValidacion:true, tarifas:[7000,8000],
+    descripcion:"Confirmación trayecto largo — $8.000. Alerta si $3.700 cruza este punto."
   },
   {
-    codigo: "G7", nombre: "Villa Paul — Funza",
-    lat: 4.7420775, lng: -74.2275960, radio: 600,
-    tarifa: null,
-    descripcion: "Destino final $7.000 y $8.000 — paradero Villa Paul",
-    tarifas: [7000, 8000],
-    esDestino: true
+    codigo:"G7", nombre:"Funza / Mosquera",
+    lat:4.7167, lng:-74.2133, radio:1500,
+    esDestino:true, tarifas:[7000,8000,3000],
+    descripcion:"Destino final intermunicipal — $7.000 / $8.000 / $3.000"
   },
   {
-    codigo: "G8", nombre: "INPEC — Funza/Mosquera",
-    lat: 4.7349630, lng: -74.1860322, radio: 400,
-    tarifa: null,
-    descripcion: "Destino final $7.000 y $8.000 — paradero INPEC",
-    tarifas: [7000, 8000],
-    esDestino: true
+    codigo:"G8", nombre:"Planadas",
+    lat:4.6456, lng:-74.1667, radio:400,
+    esRutaEspecial:true, tarifas:[3400],
+    descripcion:"Tarifa única $3.400 — bloquea todas las demás tarifas"
   },
   {
-    codigo: "G9", nombre: "Planadas",
-    lat: 4.615282, lng: -74.213917, radio: 400,
-    tarifa: 3400,
-    descripcion: "Tarifa única $3.400 — ruta especial Planadas ↔ Portal Dorado",
-    tarifas: [3400],
-    esRutaEspecial: true
-  },
-  {
-    codigo: "G10", nombre: "Portal Dorado — Bogotá",
-    lat: 4.6944, lng: -74.1478, radio: 350,
-    tarifa: 3400,
-    descripcion: "Destino ruta especial Planadas — tarifa única $3.400",
-    tarifas: [3400],
-    esDestinoEspecial: true
+    codigo:"G9", nombre:"Portal Dorado",
+    lat:4.6944, lng:-74.1478, radio:350,
+    esDestinoEspecial:true, tarifas:[3400],
+    descripcion:"Destino ruta Planadas — tarifa única $3.400"
   }
 ];
 
@@ -1468,22 +1443,25 @@ async function guardarRecorridoOperativoFirebase(duracion){
 
 // Voces cortas por geocerca según dirección
 const VOZ_GEO = {
+  // ── SENTIDO IDA — Soacha → Funza ──
   "G1_ida":    "Inicio de ruta. Soacha hacia Funza.",
   "G2_ida":    "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
-  "G3_ida":    "Avenida Villavicencio. Tiquetes de tres mil trescientos, su parada.",
-  "G4_ida":    "Río Bogotá. Tiquetes de tres mil setecientos, su parada.",
-  "G5_ida":    "Peaje Calle trece. Verifiquen tiquetes de siete u ocho mil.",
-  "G6_ida":    "Paradero INPEC. Destino final. Gracias por viajar.",
-  "G7_ida":    "Fontibón. Tiquetes de seis mil doscientos, su parada.",
-  "G6_vuelta": "Salida desde Funza hacia Bogotá y Soacha.",
-  "G5_vuelta": "Peaje Calle trece. Verifiquen tiquetes.",
-  "G4_vuelta": "Río Bogotá. Tiquetes de tres mil setecientos, su parada.",
-  "G7_vuelta": "Fontibón. Tiquetes de seis mil doscientos, su parada.",
-  "G3_vuelta": "Avenida Villavicencio. Tiquetes de tres mil trescientos, su parada.",
+  "G3_ida":    "Avenida Primera de Mayo. Tiquetes de tres mil trescientos, su parada.",
+  "G4_ida":    "Río Bogotá. Frontera urbana. Tiquetes de tres mil setecientos, su zona.",
+  "G5_ida":    "Bosa La Despensa. Origen tiquetes de siete mil.",
+  "G6_ida":    "Peaje Calle trece. Verifiquen tiquetes de siete u ocho mil.",
+  "G7_ida":    "Funza y Mosquera. Destino final. Gracias por viajar.",
+  "G8_ida":    "Zona Planadas. Tarifa única tres mil cuatrocientos.",
+  "G9_ida":    "Portal Dorado. Destino final ruta Planadas.",
+  // ── SENTIDO VUELTA — Funza → Soacha ──
+  "G7_vuelta": "Salida desde Funza hacia Bogotá y Soacha.",
+  "G6_vuelta": "Peaje Calle trece. Verifiquen tiquetes.",
+  "G4_vuelta": "Río Bogotá. Frontera urbana. Tiquetes de tres mil setecientos, su zona.",
+  "G3_vuelta": "Avenida Primera de Mayo. Tiquetes de tres mil trescientos, su parada.",
   "G2_vuelta": "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
   "G1_vuelta": "Llegamos a Soacha. Destino final. Hasta pronto.",
-  "G8_ida":    "Zona Planadas. Tarifa única tres mil cuatrocientos.",
   "G8_vuelta": "Zona Planadas. Tarifa única tres mil cuatrocientos.",
+  "G9_vuelta": "Portal Dorado. Origen ruta Planadas.",
 };
 
 function alEntrarGeocerca(geo, dist){
@@ -1497,16 +1475,17 @@ function alEntrarGeocerca(geo, dist){
     setTimeout(()=>hablar(vozMsg, 1.0, 1.1), 400);
   }
 
-  // Acciones especiales según geocerca
-  if(geo.esFrontera)    verificarPasajerosEnFrontera(geo);
-  if(geo.esValidacion)  verificarPasajerosValidacion(geo);
+  // Acciones base — todos los planes
   if(geo.esDestino && direccionRuta==="ida") notificarDescensoMasivo(geo);
   if(geo.codigo==="G1" && direccionRuta==="vuelta") notificarDescensoMasivo(geo);
-
-  // Notificar descenso para geocercas con tarifa
   if(!geo.esDestino && !geo.esOrigen && !geo.esValidacion){
     notificarDescenso(geo);
   }
+
+  // Validaciones avanzadas — solo TUNIM Premium
+  const esPremium = configTurno?.planTunim === "premium";
+  if(esPremium && geo.esFrontera)   verificarPasajerosEnFrontera(geo);
+  if(esPremium && geo.esValidacion) verificarPasajerosValidacion(geo);
 
   mostrarToast("📍 " + geo.nombre, "");
   guardarEventoGeocercaFirebase(geo, dist);
@@ -1530,27 +1509,84 @@ function alertaProximaGeocerca(geo, dist){
   }
 }
 
-// Verificar pasajeros en punto frontera
+// Verificar pasajeros en punto frontera G4 Río Bogotá
+// $3.700 se baja en cualquier punto de Bogotá — no se anuncia destino fijo
+// Verificar pasajeros en punto frontera G4 Río Bogotá
+// BASE: alerta genérica
+// PREMIUM: alerta específica por tarifa con diferencia de cobro
 function verificarPasajerosEnFrontera(geo){
-  const pasajerosMenores = pasajerosABordo.filter(p => p.precio < 3700);
-  if(pasajerosMenores.length > 0){
-    setTimeout(()=>{
-      hablar("Alerta: " + pasajerosMenores.length + " pasajeros con tarifa menor al trayecto actual. Verificar pago.", 0.9, 1.0);
-    }, 2000);
-    mostrarToast("⚠ " + pasajerosMenores.length + " pax con tarifa baja en frontera","alerta");
+  if(direccionRuta !== "ida") return;
+  const esPremium = configTurno?.planTunim === "premium";
+
+  if(esPremium){
+    // $2.300 nunca debe cruzar G4 — debió bajar en G2
+    const pax2300 = pasajerosABordo.filter(p => p.precio === 2300);
+    if(pax2300.length > 0){
+      setTimeout(()=>{
+        hablar(
+          "Atención conductor. " + pax2300.length +
+          " pasajero" + (pax2300.length>1?"s":"") +
+          " de dos mil trescientos cruzando el Río Bogotá. " +
+          "Debieron bajar en Bosa Estación.", 0.85, 1.0);
+      }, 500);
+      mostrarToast("🔴 " + pax2300.length + " pax $2.300 excedieron Bosa Estación","alerta");
+    }
+    // $3.300 nunca debe cruzar G4 — debió bajar en G3
+    const pax3300 = pasajerosABordo.filter(p => p.precio === 3300);
+    if(pax3300.length > 0){
+      setTimeout(()=>{
+        hablar(
+          "Atención conductor. " + pax3300.length +
+          " pasajero" + (pax3300.length>1?"s":"") +
+          " de tres mil trescientos cruzando el Río Bogotá. " +
+          "Debieron bajar en Avenida Primera de Mayo.", 0.85, 1.0);
+      }, pax2300.length>0 ? 5000 : 500);
+      mostrarToast("🔴 " + pax3300.length + " pax $3.300 excedieron Primera de Mayo","alerta");
+    }
+    // $3.700 — normal, no se anuncia destino fijo
+  } else {
+    // Plan básico — alerta genérica
+    const pasajerosMenores = pasajerosABordo.filter(p => p.precio < 3700);
+    if(pasajerosMenores.length > 0){
+      setTimeout(()=>{
+        hablar("Alerta: " + pasajerosMenores.length + " pasajeros con tarifa menor al trayecto actual. Verificar pago.", 0.9, 1.0);
+      }, 2000);
+      mostrarToast("⚠ " + pasajerosMenores.length + " pax con tarifa baja en frontera","alerta");
+    }
   }
 }
 
-// Verificar pasajeros en peaje
+// Verificar pasajeros en peaje G6
+// BASE: alerta genérica
+// PREMIUM: alerta con diferencia de tarifa específica
 function verificarPasajerosValidacion(geo){
-  const pasajerosInvalidos = pasajerosABordo.filter(p =>
-    p.precio !== 7000 && p.precio !== 8000 && p.precio !== 6200 && p.precio !== 3000
-  );
-  if(pasajerosInvalidos.length > 0){
-    setTimeout(()=>{
-      hablar("Alerta de recaudo: " + pasajerosInvalidos.length + " pasajeros con tarifa incorrecta para este tramo.", 0.9, 1.0);
-    }, 2000);
-    mostrarToast("⚠ " + pasajerosInvalidos.length + " pax con tarifa incorrecta","alerta");
+  if(direccionRuta !== "ida") return;
+  const esPremium = configTurno?.planTunim === "premium";
+
+  if(esPremium){
+    // $3.700 cruzando peaje → diferencia $4.300
+    const pax3700 = pasajerosABordo.filter(p => p.precio === 3700);
+    if(pax3700.length > 0){
+      setTimeout(()=>{
+        hablar(
+          "Atención conductor. " + pax3700.length +
+          " pasajero" + (pax3700.length>1?"s":"") +
+          " de tres mil setecientos cruzaron el peaje. " +
+          "La tarifa correcta es ocho mil. Diferencia de cuatro mil trescientos.", 0.85, 1.0);
+      }, 500);
+      mostrarToast("🔴 " + pax3700.length + " pax $3.700 en peaje — diferencia $4.300","alerta");
+    }
+  } else {
+    // Plan básico — alerta genérica
+    const pasajerosInvalidos = pasajerosABordo.filter(p =>
+      p.precio !== 7000 && p.precio !== 8000 && p.precio !== 3000
+    );
+    if(pasajerosInvalidos.length > 0){
+      setTimeout(()=>{
+        hablar("Alerta de recaudo: " + pasajerosInvalidos.length + " pasajeros con tarifa incorrecta para este tramo.", 0.9, 1.0);
+      }, 2000);
+      mostrarToast("⚠ " + pasajerosInvalidos.length + " pax con tarifa incorrecta","alerta");
+    }
   }
 }
 
@@ -1560,13 +1596,25 @@ function notificarDescenso(geo){
     geo.tarifas && geo.tarifas.includes(p.precio)
   );
   if(afectados.length > 0){
+    // Conteo especial $7.000 y $8.000 — anunciar destino
+    const paxLargo = afectados.filter(p => p.precio === 7000 || p.precio === 8000);
+    if(paxLargo.length > 0){
+      const destino = direccionRuta === "vuelta" ? "Soacha" : "Funza o Mosquera";
+      setTimeout(()=>{
+        hablar(
+          paxLargo.length + " pasajero" + (paxLargo.length>1?"s":"") +
+          " para " + destino + ". Destino final.", 1.0, 1.05);
+      }, 1500);
+    }
     mostrarToast("🚶 " + afectados.length + " pasajero(s) deben descender","warn");
-    // Marcar como descendidos
     pasajerosABordo = pasajerosABordo.filter(p =>
       !geo.tarifas || !geo.tarifas.includes(p.precio)
     );
   }
 }
+
+
+
 
 function notificarDescensoMasivo(geo){
   if(pasajerosABordo.length > 0){
@@ -1626,9 +1674,6 @@ function cargarConfig(){
 }
 
 async function guardarConfigTurno(){
-  // P0-04: Verificar bloqueo
-  if(!verificarBloqueo()) return;
-
   // P0-04: Sanitizar inputs
   const placa  = SANITIZE.placa(document.getElementById("inputPlaca").value);
   const cedula = document.getElementById("inputCedula") ?
@@ -1649,11 +1694,7 @@ async function guardarConfigTurno(){
   }
   if(!fecha){ mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
 
-  // ── SPRINT 2: Validar placa + cédula contra Firestore ──
-  const resultado = await validarYCargarTurno(placa, cedula);
-  if(!resultado.ok) return; // Bloqueado por validación
-
-  // Generar idTurno — llave principal
+  // Generar idTurno SIEMPRE — sin esperar Firebase
   const idTurno = generarIdTurno(placa, cedula, fecha);
   configTurno={
     idTurno,
@@ -1663,25 +1704,32 @@ async function guardarConfigTurno(){
     fechaInicio:       fecha,
     horaInicio:        hora||"--:--",
     estadoTurno:       "Activo",
-    empresa:           resultado.empresaNombre||"Autoboy",
-    empresaId:         resultado.empresa||"autoboy",
-    corredor:          resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
-    planTunim:         resultado.planTunim||"basico",
-    modoAcceso:        resultado.modo||"local",
+    empresa:           "Autoboy",
+    empresaId:         "autoboy",
+    corredor:          "Funza-Mosquera-Bogotá-Soacha",
+    planTunim:         "basico",
+    modoAcceso:        "local",
     viajesCompletados: 0
   };
   try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
 
-  // Renderizar tarifas dinámicas si se cargaron
-  renderDestinos();
-
+  // ── CERRAR MODAL INMEDIATAMENTE — sin esperar Firebase ──
   document.getElementById("modalConfig").style.display="none";
+  renderDestinos();
+  actualizarUI();
   actualizarBarraVehiculo();
-  auditLog("TURNO_INICIADO","Placa:"+placa+" idTurno:"+idTurno+" Modo:"+resultado.modo,"info");
+  setViaje(1);
   _intentosFallidos = 0;
-  mostrarToast("🔄 Buscando turno activo...","");
-  await cargarTurnoDesdeFirebase(placa, fecha, cedula);
-  sincronizarConfigFirebase();
+  mostrarToast("✅ Turno iniciado","");
+  auditLog("TURNO_INICIADO","Placa:"+placa+" idTurno:"+idTurno,"info");
+
+  // ── Firebase en background — nunca bloquea al conductor ──
+  setTimeout(async ()=>{
+    try{
+      await cargarTurnoDesdeFirebase(placa, fecha, cedula);
+      sincronizarConfigFirebase();
+    }catch(e){ console.warn("Firebase background:", e); }
+  }, 1500);
 }
 
 // Esperar a que Firebase esté listo con timeout de 8 segundos
@@ -1772,10 +1820,20 @@ async function sincronizarConfigFirebase(){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
     const {db,doc,setDoc,serverTimestamp}=window._fb;
-    const key=configTurno.placa+"_"+configTurno.fechaInicio;
-    await setDoc(doc(db,"turnos",key),{
-      placa:configTurno.placa,fechaInicio:configTurno.fechaInicio,
-      horaInicio:configTurno.horaInicio,actualizadoEn:serverTimestamp()
+    // Usar idTurno como llave principal — arquitectura TUNIM
+    const idTurno = configTurno.idTurno||generarIdTurno(configTurno.placa,configTurno.cedula||"0",configTurno.fechaInicio);
+    await setDoc(doc(db,"turnos",idTurno),{
+      idTurno,
+      placa:configTurno.placa,
+      cedulaConductor:configTurno.cedula||"",
+      nombreConductor:configTurno.nombreConductor||"",
+      empresa:configTurno.empresa||"Autoboy",
+      corredor:configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fechaInicio:configTurno.fechaInicio,
+      horaInicio:configTurno.horaInicio,
+      estadoTurno:"Activo",
+      viajesCompletados:viajeActual,
+      actualizadoEn:serverTimestamp()
     },{merge:true});
     // Guardar estado completo para sincronizar entre dispositivos
     await setDoc(doc(db,"turnos_activos",key),{
@@ -2235,41 +2293,73 @@ function cambiarDireccionManual(){
   if(btn) btn.textContent = direccionRuta === "ida" ? "🚌 IDA" : "🚌 VUELTA";
 }
 
+// ══════════════════════════════════════════════════════════════
+// SISTEMA DE VOZ INTELIGENTE — TUNIM · ACCESVIAL 2026
+// Reglas:
+//   R1: Cada 5 pasajeros de la misma tarifa → anuncia destino
+//   R2: Marcaciones en grupo → espera 3s → anuncia una sola vez
+//   R3: $7.000 y $8.000 → siempre anuncia con conteo Funza
+// ══════════════════════════════════════════════════════════════
+
 const VOZ_DESTINOS_IDA = {
-  2300: "Bienvenido. Su destino es Bosa Estación. Que tenga buen viaje.",
-  3300: "Bienvenido. Su destino es Avenida Villavicencio con Primera de Mayo. Que tenga buen viaje.",
-  3700: "Bienvenido. Su tiquete cubre hasta cualquier punto de Bogotá antes del Río Bogotá. Que tenga buen viaje.",
-  6200: "Bienvenido. Su destino es Fontibón, Calle trece. Que tenga buen viaje.",
-  7000: "Bienvenido. Su destino es Funza o Mosquera, saliendo desde Bogotá. Que tenga buen viaje.",
-  8000: "Bienvenido. Su destino es Funza o Mosquera desde Soacha. Que tenga buen viaje.",
-  3000: "Bienvenido. Su destino es Funza o Mosquera desde el Río Bogotá. Que tenga buen viaje.",
-  3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
+  2300: "Su tiquete va hasta Bosa Estación. Buen viaje.",
+  3300: "Su tiquete va hasta Avenida Primera de Mayo. Buen viaje.",
+  3700: "Su tiquete va hasta el Río Bogotá. Buen viaje.",
+  8000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
+  7000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
+  3000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
+  3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
 
 const VOZ_DESTINOS_VUELTA = {
-  2300: "Bienvenido. Su destino es Bosa Estación viniendo desde Funza. Que tenga buen viaje.",
-  3300: "Bienvenido. Su destino es Avenida Villavicencio con Primera de Mayo. Que tenga buen viaje.",
-  3700: "Bienvenido. Su tiquete cubre desde el Río Bogotá hasta Soacha o Bogotá. Que tenga buen viaje.",
-  6200: "Bienvenido. Su destino es Fontibón, Calle trece, viniendo desde Funza. Que tenga buen viaje.",
-  7000: "Bienvenido. Su destino es Bogotá desde Funza o Mosquera. Que tenga buen viaje.",
-  8000: "Bienvenido. Su destino es Soacha desde Funza o Mosquera. Que tenga buen viaje.",
-  3000: "Bienvenido. Su destino está en Bogotá después del Río Bogotá. Que tenga buen viaje.",
-  3400: "Bienvenido. Su destino es Portal Dorado. Que tenga buen viaje.",
+  2300: "Su tiquete va hasta Bosa Estación. Buen viaje.",
+  3300: "Su tiquete va hasta Avenida Primera de Mayo. Buen viaje.",
+  3700: "Su tiquete va hasta Soacha. Buen viaje.",
+  8000: "Su tiquete va hasta Soacha. Buen viaje.",
+  7000: "Su tiquete va hasta Bogotá. Buen viaje.",
+  3000: "Su tiquete cubre hasta el Río Bogotá. Buen viaje.",
+  3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
 
-// ══ DEBOUNCE DE VOZ — 5 segundos desde último pasajero ══
 let vozDebounceTimer = null;
 let contadorDebounce = 0;
+let _conteosPorPrecio = {}; // Contador por tarifa para regla cada 5
 
 function vozPagoRegistrado(precio){
   contadorDebounce++;
   const numActual = contadorDebounce;
   clearTimeout(vozDebounceTimer);
-  // 3 segundos — si no hay más marcaciones, anuncia una sola vez
+
+  // Acumular conteo por precio
+  _conteosPorPrecio[precio] = (_conteosPorPrecio[precio] || 0) + 1;
+  const conteoActual = _conteosPorPrecio[precio];
+
+  // Debounce 3 segundos — una sola voz por grupo de marcaciones
   vozDebounceTimer = setTimeout(()=>{
-    if(numActual === contadorDebounce){
-      hablar("Bienvenido, buen viaje", 1.0, 1.1);
+    if(numActual !== contadorDebounce) return; // Llegaron más marcaciones
+
+    const dir = direccionRuta || "ida";
+    const vozDir = dir === "vuelta" ? VOZ_DESTINOS_VUELTA : VOZ_DESTINOS_IDA;
+
+    // ── R3: $7.000 y $8.000 — siempre anuncia con conteo total hacia Funza ──
+    if(precio === 8000 || precio === 7000){
+      const totalFunza = (estado.conteos[getRutas().findIndex(r=>r.precio===8000)]||0)
+                       + (estado.conteos[getRutas().findIndex(r=>r.precio===7000)]||0);
+      const destino = dir === "vuelta" ? "Soacha" : "Funza o Mosquera";
+      hablar("Van " + totalFunza + " pasajeros para " + destino + ". " + (vozDir[precio]||"Buen viaje."), 1.0, 1.05);
+      return;
     }
+
+    // ── R1: Cada 5 pasajeros de la misma tarifa — anuncia destino ──
+    if(conteoActual % 5 === 0){
+      hablar("Llevan " + conteoActual + " pasajeros. " + (vozDir[precio]||"Buen viaje."), 1.0, 1.05);
+      return;
+    }
+
+    // ── R2: Marcación normal — mensaje corto ──
+    const msg = vozDir[precio] || "Buen viaje.";
+    hablar(msg, 1.0, 1.05);
+
   }, 3000);
 }
 
@@ -2409,7 +2499,7 @@ function registrar(idx){
     console.log("Rate limit: registro ignorado");
     return;
   }
-  const ruta=RUTAS[idx];
+  const ruta=getRutas()[idx]||RUTAS[idx]; // getRutas() primero, fallback a RUTAS
   const ahora=horaColombiaActual();
   const totalHoy=estado.historial.length+1;
   const reg={idx,nombre:ruta.nombre,precio:ruta.precio,viaje:viajeActual,
