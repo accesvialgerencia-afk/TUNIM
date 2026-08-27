@@ -781,6 +781,7 @@ const RUTAS=[
   {nombre:"Soacha → Funza/Mosquera",    desde:"Soacha",  hasta:"Funza",   precio:8000, geocercaDestino:"G7"},
   // ── SALIENDO DE BOGOTÁ ──
   {nombre:"Bogotá → Funza/Mosquera",    desde:"Bogotá",  hasta:"Funza",   precio:7000, geocercaDestino:"G7"},
+  {nombre:"Funza → Fontibón Cl13",       desde:"Funza",   hasta:"Bogotá",  precio:6200, geocercaDestino:"G7"},
   // ── TRAYECTO CORTO POST-PEAJE ──
   {nombre:"Río Bogotá → Funza/Mosq.",   desde:"Río Bog", hasta:"Funza",   precio:3000, geocercaDestino:"G8"},
   // ── RUTA ESPECIAL PLANADAS ──
@@ -968,7 +969,7 @@ const SANITIZE = {
   },
   precio(v){
     const n=parseInt(v);
-    const VALIDOS=[2300,3000,3300,3400,3700,7000,8000];
+    const VALIDOS=[2300,3000,3300,3400,3700,6200,7000,8000];
     return VALIDOS.includes(n)?n:0;
   }
 };
@@ -988,7 +989,7 @@ function validarTurno(config){
 }
 
 function validarPasajero(reg){
-  const PRECIOS_VALIDOS = [2300,3000,3300,3400,3700,7000,8000];
+  const PRECIOS_VALIDOS = [2300,3000,3300,3400,3700,6200,7000,8000];
   if(!PRECIOS_VALIDOS.includes(reg.precio))
     return false; // Precio manipulado
   if(reg.viaje < 1 || reg.viaje > 3)
@@ -1579,7 +1580,7 @@ function verificarPasajerosValidacion(geo){
   } else {
     // Plan básico — alerta genérica
     const pasajerosInvalidos = pasajerosABordo.filter(p =>
-      p.precio !== 7000 && p.precio !== 8000 && p.precio !== 3000
+      p.precio !== 7000 && p.precio !== 8000 && p.precio !== 6200 && p.precio !== 3000
     );
     if(pasajerosInvalidos.length > 0){
       setTimeout(()=>{
@@ -2307,6 +2308,7 @@ const VOZ_DESTINOS_IDA = {
   3700: "Su tiquete va hasta el Río Bogotá. Buen viaje.",
   8000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
   7000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
+  6200: "Su tiquete va hasta Fontibón, Calle trece. Buen viaje.",
   3000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
   3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
@@ -2317,6 +2319,7 @@ const VOZ_DESTINOS_VUELTA = {
   3700: "Su tiquete va hasta Soacha. Buen viaje.",
   8000: "Su tiquete va hasta Soacha. Buen viaje.",
   7000: "Su tiquete va hasta Bogotá. Buen viaje.",
+  6200: "Su tiquete va hasta Fontibón, Calle trece, viniendo desde Funza. Buen viaje.",
   3000: "Su tiquete cubre hasta el Río Bogotá. Buen viaje.",
   3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
