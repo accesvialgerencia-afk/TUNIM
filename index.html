@@ -147,6 +147,33 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 .sec-action:hover{border-color:var(--rojo);color:var(--rojo)}
 
 /* ── GRID DE TARIFAS ── */
+/* ══ ANILLO DE META + RUTA EN CURSO — Copiloto IA ══ */
+.copiloto-meta{display:flex;align-items:center;gap:16px;padding:14px 16px;margin:0 12px 10px;
+  background:#0D1219;border:1px solid var(--border);border-radius:14px}
+.anillo-wrap{position:relative;width:78px;height:78px;flex-shrink:0}
+.anillo-wrap svg{transform:rotate(-90deg);width:78px;height:78px}
+.anillo-centro{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.anillo-pct{font-family:'Bebas Neue',sans-serif;font-size:1.25rem;line-height:1}
+.anillo-lbl{font-size:0.46rem;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-top:1px}
+.copiloto-meta-info{flex:1;min-width:0}
+.copiloto-meta-titulo{font-size:0.54rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+.copiloto-meta-monto{font-family:'Bebas Neue',sans-serif;font-size:1.15rem;line-height:1}
+.copiloto-meta-sub{font-size:0.62rem;color:var(--muted);margin-top:4px;line-height:1.3}
+
+.ruta-viva{margin:0 12px 12px;padding:12px 14px;border-radius:14px;
+  background:#0D1219;border:1px solid var(--border);display:none}
+.ruta-viva.activa{display:block}
+.ruta-cabecera{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ruta-titulo{font-size:0.5rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.ruta-track{position:relative;height:5px;background:var(--border);border-radius:3px;margin:8px 0}
+.ruta-progreso{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--azul-claro);border-radius:3px;transition:width .6s ease}
+.ruta-punto{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;
+  background:#0D1219;border:2.5px solid var(--azul-claro);transform:translate(-50%,-50%);left:0%;transition:left .6s ease}
+.ruta-punto::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:1px solid var(--azul-claro);opacity:.5;animation:ruta-onda 1.6s ease-out infinite}
+@keyframes ruta-onda{0%{transform:scale(.6);opacity:.6}100%{transform:scale(1.8);opacity:0}}
+.ruta-labels{display:flex;justify-content:space-between;font-size:0.6rem;color:var(--muted)}
+.ruta-labels b{color:var(--texto,#EAF0F7);font-weight:600}
+
 .destinos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 12px 12px}
 
 /* ── BOTÓN DE TARIFA — Diseño profesional y visible ── */
@@ -513,6 +540,43 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 
 <!-- TAB PASAJEROS -->
 <div class="tab-page active" id="page-pasajeros">
+
+  <!-- COPILOTO: anillo de meta del día -->
+  <div class="copiloto-meta">
+    <div class="anillo-wrap">
+      <svg viewBox="0 0 78 78">
+        <circle cx="39" cy="39" r="33" fill="none" stroke="#1C2531" stroke-width="7"/>
+        <circle id="anilloMetaCirculo" cx="39" cy="39" r="33" fill="none" stroke="#E8354F"
+          stroke-width="7" stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"
+          style="transition:stroke-dashoffset .6s ease, stroke .3s ease"/>
+      </svg>
+      <div class="anillo-centro">
+        <div class="anillo-pct" id="anilloMetaPct" style="color:#E8354F">0%</div>
+        <div class="anillo-lbl">Meta hoy</div>
+      </div>
+    </div>
+    <div class="copiloto-meta-info">
+      <div class="copiloto-meta-titulo">Producción del día</div>
+      <div class="copiloto-meta-monto" id="copilotoMetaMonto" style="color:var(--amarillo)">$0</div>
+      <div class="copiloto-meta-sub" id="copilotoMetaSub">Registra tu primer pasajero para arrancar</div>
+    </div>
+  </div>
+
+  <!-- COPILOTO: ruta en curso -->
+  <div class="ruta-viva" id="rutaVivaBox">
+    <div class="ruta-cabecera">
+      <div class="ruta-titulo" id="rutaVivaTitulo">Ruta en curso</div>
+    </div>
+    <div class="ruta-track">
+      <div class="ruta-progreso" id="rutaVivaProgreso"></div>
+      <div class="ruta-punto" id="rutaVivaPunto"></div>
+    </div>
+    <div class="ruta-labels">
+      <span id="rutaVivaOrigen">—</span>
+      <span id="rutaVivaDestino">—</span>
+    </div>
+  </div>
+
   <div class="sec-head">
     <div class="sec-title">¿A dónde vas?</div>
     <button class="sec-action" onclick="deshacerUltimo()">↩ Deshacer</button>
@@ -928,6 +992,90 @@ function getRutas(){
 }
 
 const META_MIN=28, MULTA1=10000, MULTAN=5000;
+
+// ══════════════════════════════════════════════════════════════
+// CONTROL AUTOMÁTICO DE TIEMPO POR TRAMO — Copiloto IA
+// Detecta por GPS el inicio y fin de cada tramo, sin multas —
+// solo acompañamiento motivador para llegar a tiempo.
+// ══════════════════════════════════════════════════════════════
+const TRAMOS_TIEMPO = [
+  {
+    id: "villaPaul_timbreMosquera",
+    nombre: "Villa Paul → Timbre Mosquera",
+    inicioId: "villa_paul",              // geocerca operativa de origen
+    finLat: 4.706586, finLng: -74.229783, finRadio: 250, // punto del timbre
+    limiteMin: 28,
+    sentido: "vuelta"
+  },
+  {
+    id: "inpec_parqueMosquera",
+    nombre: "INPEC → Entrada Parque Mosquera",
+    inicioId: "inpec",
+    finLat: 4.702845, finLng: -74.226423, finRadio: 250,
+    limiteMin: 20,
+    sentido: "vuelta"
+  }
+];
+
+let tramoActivo = null;      // tramo en curso, o null
+let tramoInicioMs = null;    // Date.now() al detectar inicio
+let tramoAlertasFired = new Set();
+
+function iniciarTramoAutomatico(tramo){
+  tramoActivo = tramo;
+  tramoInicioMs = Date.now();
+  tramoAlertasFired = new Set();
+  mostrarToast("⏱ "+tramo.nombre+" — control de tiempo iniciado","");
+  auditLog("TRAMO_INICIADO", tramo.id, "info");
+}
+
+function detenerTramoAutomatico(minutosReales){
+  if(!tramoActivo) return;
+  const limite = tramoActivo.limiteMin;
+  let mensaje;
+  if(minutosReales <= limite - 3){
+    mensaje = "Excelente tiempo. Llegaste con margen de sobra.";
+  } else if(minutosReales <= limite){
+    mensaje = "¡Justo a tiempo! Buen manejo.";
+  } else {
+    const tarde = minutosReales - limite;
+    mensaje = "Llegaste "+tarde+" minuto"+(tarde>1?"s":"")+" tarde. No te preocupes, sigue así.";
+  }
+  hablar(mensaje, 1.0, 1.05);
+  mostrarToast("🏁 "+tramoActivo.nombre+" — "+minutosReales+" min","");
+  auditLog("TRAMO_COMPLETADO", tramoActivo.id+" en "+minutosReales+" min", "info");
+  tramoActivo = null;
+  tramoInicioMs = null;
+}
+
+// Verifica si el bus llegó al punto final de un tramo activo (por distancia GPS)
+function verificarFinTramo(lat, lng){
+  if(!tramoActivo || !tramoInicioMs) return;
+  const d = calcularDistancia(lat, lng, tramoActivo.finLat, tramoActivo.finLng);
+  if(d <= tramoActivo.finRadio){
+    const minutosReales = Math.round((Date.now()-tramoInicioMs)/60000);
+    detenerTramoAutomatico(minutosReales);
+  }
+}
+
+// Mensajes motivadores intermedios — sin multas, solo acompañamiento
+function verificarAlertasTramo(){
+  if(!tramoActivo || !tramoInicioMs) return;
+  const minutos = (Date.now()-tramoInicioMs)/60000;
+  const limite = tramoActivo.limiteMin;
+  const hitos = [
+    {frac:0.5,  msg:"Vas a la mitad del tramo — buen ritmo"},
+    {frac:0.8,  msg:"Ya casi — mantén el paso"},
+    {frac:1.0,  msg:"Tiempo del tramo cumplido"}
+  ];
+  hitos.forEach(h=>{
+    const marcaMin = Math.round(limite*h.frac);
+    if(minutos>=marcaMin && !tramoAlertasFired.has(marcaMin)){
+      tramoAlertasFired.add(marcaMin);
+      hablar(h.msg, 1.0, 1.05);
+    }
+  });
+}
 const STORAGE_KEY="tunim_v3";
 const HIST_KEY="tunim_hist_v3";
 const CONFIG_KEY="tunim_config_v1";
@@ -1095,21 +1243,24 @@ const GEOCERCAS = [
   },
   {
     codigo:"G2", nombre:"Bosa Estación",
-    lat:4.6297, lng:-74.1778, radio:400,
+    lat:4.596291, lng:-74.184517, radio:400,
     tarifas:[2300],
-    descripcion:"Destino $2.300 — límite corto. Pasajeros de $2.300 deben bajar aquí."
+    descripcion:"Destino $2.300 — límite corto. Pasajeros de $2.300 deben bajar aquí.",
+    validadoEnRuta:"2026-08-28"
   },
   {
     codigo:"G3", nombre:"Av. Villavicencio / 1a de Mayo",
-    lat:4.6389, lng:-74.1556, radio:350,
+    lat:4.615776, lng:-74.163056, radio:350,
     tarifas:[3300],
-    descripcion:"Destino $3.300 — límite medio. Pasajeros de $3.300 deben bajar aquí."
+    descripcion:"Destino $3.300 — límite medio. Pasajeros de $3.300 deben bajar aquí.",
+    validadoEnRuta:"2026-08-28"
   },
   {
     codigo:"G4", nombre:"Río Bogotá — Puente Calle 13",
-    lat:4.6697, lng:-74.1833, radio:500,
+    lat:4.696532, lng:-74.173188, radio:500,
     tarifas:[3700], esFrontera:true,
-    descripcion:"PUNTO CRÍTICO — frontera urbano/intermunicipal. $3.700 baja en cualquier punto de Bogotá antes de aquí."
+    descripcion:"PUNTO CRÍTICO — frontera urbano/intermunicipal. $3.700 baja en cualquier punto de Bogotá antes de aquí.",
+    validadoEnRuta:"2026-08-28"
   },
   {
     codigo:"G5", nombre:"Bosa La Despensa",
@@ -1155,7 +1306,8 @@ const GEOCERCAS_OPERATIVAS = [
     tipo: "origen",
     sentido: "ida",
     destinosEsperados: ["villa_paul"],
-    destinoPredecible: true
+    destinoPredecible: true,
+    validadoEnRuta:"2026-08-28" // confirmado a 81m de la medición real
   },
   {
     id: "llanos",
@@ -1186,7 +1338,8 @@ const GEOCERCAS_OPERATIVAS = [
     tipo: "origen_y_destino",
     sentido: "vuelta",
     destinosEsperados: ["san_humberto", "ciudad_verde"],
-    destinoPredecible: false
+    destinoPredecible: false,
+    validadoEnRuta:"2026-08-28" // confirmado a 38m de la medición real
   },
   {
     id: "inpec",
@@ -1282,6 +1435,10 @@ function detenerGPS(){
 function verificarGeocercas(pos){
   detectarDireccion(pos.lat);
 
+  // ── Control automático de tiempo por tramo ──
+  verificarFinTramo(pos.lat, pos.lng);
+  verificarAlertasTramo();
+
   // ── Motor geocercas operativas ──
   GEOCERCAS_OPERATIVAS.forEach(geo => {
     const dist = calcularDistancia(pos.lat, pos.lng, geo.lat, geo.lng);
@@ -1339,6 +1496,11 @@ function alEntrarGeocercaOperativa(geo){
     }
     mostrarToast("📍 Origen: " + geo.nombre, "");
     console.log("🚌 Origen registrado:", geo.nombre, "a las", hora);
+
+    // Control automático de tiempo por tramo — solo Villa Paul e INPEC en vuelta
+    const tramoDeEsteOrigen = TRAMOS_TIEMPO.find(t => t.inicioId === geo.id);
+    if(tramoDeEsteOrigen) iniciarTramoAutomatico(tramoDeEsteOrigen);
+
     // Voz al conductor
     if(geo.destinoPredecible && geo.destinosEsperados.length === 1){
       const dest = geo.destinosEsperados[0].replace("_"," ");
@@ -1390,6 +1552,7 @@ function alEntrarGeocercaOperativa(geo){
 }
 
 function actualizarIndicadorRuta(){
+  actualizarRutaViva();
   const el = document.getElementById("vbarRutaOp");
   if(!el) return;
   if(origenOperativo && destinoOperativo){
@@ -2041,8 +2204,18 @@ setInterval(verificarCambioDia,60000);
 function setViaje(n){
   const anterior=viajeActual;
   viajeActual=n;
+  if(configTurno) configTurno.viajesCompletados=n;
   document.querySelectorAll(".btn-viaje").forEach((b,i)=>b.classList.toggle("activo",i+1===n));
   document.getElementById("viajeLabel").textContent="🚌 VIAJE "+n+" DE 3";
+  // ── CORRECCIÓN CRÍTICA: reset de pasajeros a bordo al cambiar de viaje ──
+  // El conteo de "van X pasajeros para Funza/Soacha" debe reflejar SOLO
+  // el viaje en curso, nunca el acumulado de viajes anteriores del día.
+  if(n!==anterior){
+    pasajerosABordo = [];
+    if(typeof geocercasOperativasActivas!=="undefined") geocercasOperativasActivas.clear();
+    if(typeof origenOperativo!=="undefined") origenOperativo = null;
+    if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
+  }
   actualizarUI();guardarEstado();
   if(n>anterior) vozIniciarViaje(n);
 }
@@ -2286,10 +2459,14 @@ function ciclarModoAudio(){
 function cambiarDireccionManual(){
   direccionRuta = direccionRuta === "ida" ? "vuelta" : "ida";
   historialLatitudes = [];
+  // ── CORRECCIÓN CRÍTICA: reset de pasajeros a bordo al cambiar dirección ──
+  pasajerosABordo = [];
+  if(typeof geocercasOperativasActivas!=="undefined") geocercasOperativasActivas.clear();
+  if(typeof origenOperativo!=="undefined") origenOperativo = null;
+  if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
   const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
   mostrarToast(msg, "");
   hablar(direccionRuta === "ida" ? "Modo ida" : "Modo vuelta, Funza hacia Soacha", 1.0, 1.1);
-  // Actualizar botón
   const btn = document.getElementById("btnDireccion");
   if(btn) btn.textContent = direccionRuta === "ida" ? "🚌 IDA" : "🚌 VUELTA";
 }
@@ -2669,6 +2846,70 @@ function renderDestinos(){
 }
 
 // ══ ACTUALIZAR UI ══
+// ══ COPILOTO IA — Anillo de meta del día ══
+// Colores por umbral: rojo (<40%), naranja (40-79%), verde neón (>=80%)
+const META_DIA_VISUAL = 700000;
+function actualizarAnilloMeta(totalDin){
+  const pct = Math.min(100, Math.round(totalDin/META_DIA_VISUAL*100));
+  const circ = document.getElementById("anilloMetaCirculo");
+  const pctEl = document.getElementById("anilloMetaPct");
+  const montoEl = document.getElementById("copilotoMetaMonto");
+  const subEl = document.getElementById("copilotoMetaSub");
+  if(!circ) return;
+
+  let color, mensaje;
+  if(pct < 40){
+    color = "#E8354F"; // rojo
+    mensaje = "Vamos arrancando — cada pasajero suma";
+  } else if(pct < 80){
+    color = "#FF9500"; // naranja
+    mensaje = "Buen ritmo — sigue así";
+  } else {
+    color = "#39FF6A"; // verde neón
+    mensaje = pct>=100 ? "¡Meta cumplida! Lo que sigue es ganancia extra" : "Ya casi — la meta está cerca";
+  }
+
+  const circunferencia = 207; // 2 * PI * r(33)
+  const offset = circunferencia - (circunferencia * pct / 100);
+  circ.style.stroke = color;
+  circ.style.strokeDashoffset = offset;
+  if(pctEl){ pctEl.textContent = pct+"%"; pctEl.style.color = color; }
+  if(montoEl) montoEl.textContent = "$"+totalDin.toLocaleString("es-CO");
+  if(subEl) subEl.textContent = mensaje;
+}
+
+// ══ COPILOTO IA — Ruta en curso (origen/destino real) ══
+function actualizarRutaViva(){
+  const box = document.getElementById("rutaVivaBox");
+  const titulo = document.getElementById("rutaVivaTitulo");
+  const origenEl = document.getElementById("rutaVivaOrigen");
+  const destinoEl = document.getElementById("rutaVivaDestino");
+  const progresoEl = document.getElementById("rutaVivaProgreso");
+  const puntoEl = document.getElementById("rutaVivaPunto");
+  if(!box) return;
+
+  if(typeof origenOperativo==="undefined" || !origenOperativo){
+    box.classList.remove("activa");
+    return;
+  }
+  box.classList.add("activa");
+  if(titulo) titulo.textContent = "Ruta en curso — Viaje "+(typeof viajeActual!=="undefined"?viajeActual:1);
+  if(origenEl) origenEl.innerHTML = "<b>"+origenOperativo.nombre+"</b>";
+
+  if(typeof destinoOperativo!=="undefined" && destinoOperativo){
+    if(destinoEl) destinoEl.innerHTML = "<b>"+destinoOperativo.nombre+"</b>";
+    if(progresoEl) progresoEl.style.width = "100%";
+    if(puntoEl) puntoEl.style.left = "100%";
+  } else {
+    const destEsperado = origenOperativo.destinosEsperados && origenOperativo.destinosEsperados[0]
+      ? origenOperativo.destinosEsperados[0].replace("_"," ")
+      : "destino";
+    if(destinoEl) destinoEl.textContent = destEsperado;
+    if(progresoEl) progresoEl.style.width = "50%";
+    if(puntoEl) puntoEl.style.left = "50%";
+  }
+}
+
 function actualizarUI(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
   const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
@@ -2677,6 +2918,7 @@ function actualizarUI(){
   document.getElementById("rbPax").textContent=totalPax;
   document.getElementById("rbTotal").textContent=formatCorto(totalDin);
   document.getElementById("rbViaje").textContent=formatCorto(viajeDin);
+  actualizarAnilloMeta(totalDin);
   if(estado.historial.length>0){
     const u=estado.historial[0];
     document.getElementById("urTexto").textContent=u.nombre+" (Viaje "+u.viaje+")";
@@ -2854,8 +3096,40 @@ async function recuperarTurnoActivo(){
   }
 }
 
+// ══ WATCHDOG 3AM — Nunca dejar al conductor sin TUNIM ══
+// Si el modal de inicio queda abierto con datos válidos por 30s
+// sin cerrarse, fuerza el inicio en modo local automáticamente.
+function watchdogModal(){
+  const modal = document.getElementById("modalConfig");
+  if(!modal || modal.style.display === "none") return;
+  const placaEl = document.getElementById("inputPlaca");
+  const cedulaEl = document.getElementById("inputCedula");
+  const placa = placaEl ? SANITIZE.placa(placaEl.value) : "";
+  const cedula = cedulaEl ? SANITIZE.cedula(cedulaEl.value) : "";
+  if(placa.length >= 5 && cedula.length >= 6){
+    console.warn("WATCHDOG: modal atascado — forzando inicio local");
+    auditLog("WATCHDOG_MODAL","Inicio forzado tras 30s","warn");
+    const fecha = document.getElementById("inputFecha")?.value || new Date().toISOString().slice(0,10);
+    const hora  = document.getElementById("inputHoraInicio")?.value || "--:--";
+    const idTurno = generarIdTurno(placa, cedula, fecha);
+    configTurno = {
+      idTurno, placa, cedula, nombreConductor:"",
+      fechaInicio:fecha, horaInicio:hora,
+      estadoTurno:"Activo", empresa:"Autoboy", empresaId:"autoboy",
+      corredor:"Funza-Mosquera-Bogotá-Soacha", planTunim:"basico",
+      modoAcceso:"watchdog", viajesCompletados:0
+    };
+    try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
+    modal.style.display="none";
+    renderDestinos(); actualizarUI(); actualizarBarraVehiculo(); setViaje(1);
+    mostrarToast("⚡ Inicio de emergencia activado","");
+  }
+}
+setInterval(watchdogModal, 30000);
+
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
+actualizarRutaViva();
 inicializarVoz();
 // Activar GPS automáticamente después de configurar el turno
 setTimeout(()=>{
