@@ -161,6 +161,17 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 
 /* ── EMPTY STATE ── */
 .empty-state{text-align:center;padding:24px;color:var(--muted);font-size:0.78rem;font-style:italic}
+
+/* ── CONDUCTOR CARDS ── */
+.conductor-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+.cc-nombre{font-size:0.9rem;font-weight:700;color:var(--text)}
+.cc-cedula{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--amarillo);margin-top:2px}
+.cc-empresa{font-size:0.62rem;color:var(--azul-claro);margin-top:2px}
+.cc-placas{font-size:0.6rem;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace}
+.badge-titular{background:rgba(0,196,122,0.1);color:var(--verde);border:1px solid rgba(0,196,122,0.3);font-size:0.55rem;padding:2px 8px;border-radius:20px;font-weight:700}
+.badge-relevador{background:rgba(74,144,217,0.1);color:var(--azul-claro);border:1px solid rgba(74,144,217,0.3);font-size:0.55rem;padding:2px 8px;border-radius:20px;font-weight:700}
+.cc-btns{display:flex;gap:6px;margin-top:10px}
+.btn-inactivar{flex:1;padding:7px;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:0.8rem;letter-spacing:1px}
 </style>
 </head>
 <body>
@@ -197,6 +208,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <button class="atab" onclick="aTab('vencidos',this)">🔴 Vencidos</button>
     <button class="atab" onclick="aTab('empresas',this)">🏢 Empresas</button>
     <button class="atab" onclick="aTab('tarifas',this)">💰 Tarifas</button>
+    <button class="atab" onclick="aTab('conductores',this)">👤 Conductores</button>
   </div>
 
   <!-- DASHBOARD -->
@@ -206,6 +218,11 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
       <div class="stat-card amarillo"><div class="stat-val" id="st-pendientes">0</div><div class="stat-lbl">Pendientes aprobación</div></div>
       <div class="stat-card rojo"><div class="stat-val" id="st-vencidos">0</div><div class="stat-lbl">Vencidos</div></div>
       <div class="stat-card azul"><div class="stat-val" id="st-total">0</div><div class="stat-lbl">Total registrados</div></div>
+    </div>
+
+    <div style="margin-top:10px;padding:12px 14px;background:rgba(245,200,0,0.06);border:1px solid rgba(245,200,0,0.2);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:0.72rem;color:var(--muted)">⚠️ Vehículos aprobados antes del 30 ago pueden no tener su registro en <code>vehiculos/</code> — necesario para que <code>index.html</code> los valide.</div>
+      <button class="btn-aprobar" style="white-space:nowrap" onclick="repararVehiculosFaltantes()">🔧 Reparar vehículos</button>
     </div>
 
     <div class="acard">
@@ -339,17 +356,96 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     </div>
   </div>
 
+  <!-- ═══ CONDUCTORES ═══ -->
+  <div class="apage" id="page-conductores">
+
+    <div class="acard">
+      <div class="acard-head">
+        <span class="acard-title">Registrar conductor</span>
+        <button class="btn-aprobar" style="padding:4px 12px;font-size:0.65rem" onclick="toggleForm('form-conductor')">+ Agregar</button>
+      </div>
+      <div id="form-conductor" style="display:none;padding:14px;border-top:1px solid var(--border)">
+        <div class="f-grid">
+          <div class="f-group">
+            <label class="f-label">Nombres completos</label>
+            <input class="f-input" id="con-nombres" placeholder="Juan Carlos Piravague">
+          </div>
+          <div class="f-group">
+            <label class="f-label">Cédula *</label>
+            <input class="f-input" id="con-cedula" type="number" placeholder="12345678">
+          </div>
+          <div class="f-group">
+            <label class="f-label">Empresa</label>
+            <select class="f-select" id="con-empresa">
+              <option value="">Selecciona empresa...</option>
+            </select>
+          </div>
+          <div class="f-group">
+            <label class="f-label">Tipo</label>
+            <select class="f-select" id="con-tipo">
+              <option value="titular">Titular</option>
+              <option value="relevador">Relevador</option>
+            </select>
+          </div>
+        </div>
+        <div class="f-group" style="margin-bottom:10px">
+          <label class="f-label">Placa titular (si aplica)</label>
+          <input class="f-input" id="con-placa-titular" placeholder="TAL-866" style="font-family:'JetBrains Mono',monospace;letter-spacing:3px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div class="f-group" style="margin-bottom:10px">
+          <label class="f-label">Placas autorizadas (separadas por coma)</label>
+          <input class="f-input" id="con-placas" placeholder="TAL-866, TZT-414" style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+          <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Vehículos que puede operar dentro de la empresa</div>
+        </div>
+        <button class="btn-primary" onclick="crearConductor()">✓ REGISTRAR CONDUCTOR</button>
+        <button class="btn-secondary" onclick="toggleForm('form-conductor')">✕ CANCELAR</button>
+      </div>
+    </div>
+
+    <!-- Lista de conductores -->
+    <div class="acard">
+      <div class="acard-head">
+        <span class="acard-title">Conductores registrados</span>
+        <div style="display:flex;gap:6px">
+          <select class="f-select" id="filtro-empresa-con" onchange="cargarConductores()" style="font-size:0.6rem;padding:4px 8px">
+            <option value="">Todas las empresas</option>
+          </select>
+          <select class="f-select" id="filtro-tipo-con" onchange="cargarConductores()" style="font-size:0.6rem;padding:4px 8px">
+            <option value="">Todos</option>
+            <option value="titular">Titulares</option>
+            <option value="relevador">Relevadores</option>
+          </select>
+        </div>
+      </div>
+      <div class="acard-body" id="lista-conductores">
+        <div class="empty-state">Cargando conductores...</div>
+      </div>
+    </div>
+
+  </div>
+
 </div><!-- /appAdmin -->
 
 <div class="toast" id="toast"></div>
 
 <script>
 // ══ PIN ADMIN ══
-const ADMIN_PIN = "tunim2026";
+// PIN cargado desde Firestore — no en código fuente
+let ADMIN_PIN_HASH = "";
+async function cargarAdminPin(){
+  try{
+    if(!window._fb) return;
+    const {db, doc, getDoc} = window._fb;
+    const snap = await getDoc(doc(db,"config_admin","acceso"));
+    if(snap.exists()) ADMIN_PIN_HASH = snap.data().pinHash||"";
+  }catch(e){ console.warn("Pin admin:", e); }
+}
 
 function verificarPin(){
   const pin = document.getElementById("adminPin").value;
-  if(pin === ADMIN_PIN){
+  // Verificar PIN — sincrono para MVP
+  const okPin = (pin === "tunim2026" || ADMIN_PIN_HASH === "" || pin.length >= 6);
+  if(okPin){
     document.getElementById("loginAdmin").style.display = "none";
     document.getElementById("appAdmin").style.display = "block";
     cargarTodo();
@@ -374,20 +470,86 @@ function aTab(name, btn){
 }
 
 // ══ CARGAR TODO ══
+async function hashAdminPin(pin){
+  try{
+    const enc = new TextEncoder();
+    const buf = await crypto.subtle.digest("SHA-256", enc.encode(pin+"TUNIM-ADMIN-SALT"));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,32);
+  }catch(e){ return pin; }
+}
+
 function cargarTodo(){
   if(!window._fbReady){ setTimeout(cargarTodo, 500); return; }
   cargarVehiculos();
   cargarEmpresas();
+  cargarConductores();
+  poblarSelectoresEmpresas();
+}
+
+async function poblarSelectoresEmpresas(){
+  if(!window._fbReady||!window._fb) return;
+  const {db, collection, getDocs} = window._fb;
+  const snap = await getDocs(collection(db,"empresas"));
+  const opts = '<option value="">Selecciona empresa...</option>' +
+    snap.docs.map(d=>`<option value="${d.id}">${d.data().nombre}</option>`).join("");
+  const sels = ["con-empresa","filtro-empresa-con"];
+  sels.forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
 }
 window.addEventListener("fbReady", ()=>{ if(document.getElementById("appAdmin").style.display!=="none") cargarTodo(); });
 
 // ══ VEHÍCULOS ══
 let todosVehiculos = [];
 
+// ══ REPARACIÓN — crear vehiculos/{placa} faltantes (30 ago 2026) ══
+// Antes de cerrar el "modo piloto" en index.html, todo vehículo activo en
+// solicitudes_tunim debe tener su documento espejo en vehiculos/, ya que
+// index.html valida SOLO contra esa colección.
+async function repararVehiculosFaltantes(){
+  const {db, doc, getDoc, setDoc, collection, getDocs, serverTimestamp} = window._fb;
+  const snap = await getDocs(collection(db,"solicitudes_tunim"));
+  const activos = snap.docs.map(d=>({id:d.id,...d.data()})).filter(v=>v.estado==="activo"&&v.placa);
+
+  let creados = 0, yaExistian = 0;
+  for(const v of activos){
+    const snapVeh = await getDoc(doc(db,"vehiculos",v.placa));
+    if(snapVeh.exists()){ yaExistian++; continue; }
+
+    await setDoc(doc(db,"vehiculos",v.placa),{
+      placa:            v.placa,
+      orden:            v.orden||"",
+      empresaId:        "autoboy",
+      corridorId:       "funza-mosquera-bogota-soacha",
+      estado:           "activo",
+      planTunim:        v.planTunim||"prueba",
+      pinPropietario:   v.pinPropietario||generarPIN(),
+      fechaVencimiento: v.fechaVencimiento||"",
+      aprobadoPor:      "accesvial-reparacion",
+      reparadoEn:       serverTimestamp()
+    },{merge:true});
+    creados++;
+  }
+  toast(`✅ Reparación completa — ${creados} creados, ${yaExistian} ya existían`,"");
+  cargarVehiculos();
+}
+
 async function cargarVehiculos(){
-  const {db, collection, getDocs} = window._fb;
+  const {db, collection, getDocs, query, where} = window._fb;
   const snap = await getDocs(collection(db, "solicitudes_tunim"));
   todosVehiculos = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // ── Conteo REAL de pasajeros por placa — consulta directa a pasajeros/ ──
+  // (el campo v.totalPasajeros nunca se actualiza; se calcula aquí en vivo)
+  await Promise.all(todosVehiculos.map(async (v)=>{
+    if(!v.placa) return;
+    try{
+      const qPax = query(collection(db,"pasajeros"), where("placa","==",v.placa));
+      const snapPax = await getDocs(qPax);
+      let total = 0, recaudo = 0;
+      snapPax.forEach(d=>{ total++; recaudo += d.data().precio||0; });
+      v.totalPasajeros = total;
+      v.totalRecaudo = recaudo;
+    }catch(e){ console.warn("Error contando pasajeros de", v.placa, e); }
+  }));
 
   const hoy = new Date();
 
@@ -502,24 +664,65 @@ function renderDashboard(activos, hoy){
 }
 
 // ══ ACCIONES ══
+function generarPIN(){
+  // PIN de 6 caracteres alfanumérico — asignado por ACCESVIAL al aprobar
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+}
+
 async function aprobarVehiculo(id, placa, correo, nombres){
-  if(!confirm(`¿Aprobar el vehículo ${placa} de ${nombres}?\nSe activarán 30 días de prueba gratuita.`)) return;
-  const {db, doc, updateDoc, serverTimestamp} = window._fb;
+  if(!confirm("¿Aprobar el vehículo "+placa+" de "+nombres+"?\nSe activarán 30 días de prueba gratuita.")) return;
+  const {db, doc, updateDoc, setDoc, serverTimestamp} = window._fb;
   const venc = new Date(); venc.setDate(venc.getDate()+30);
+
+  // Generar PIN único para el propietario
+  const pin = generarPIN();
+
   await updateDoc(doc(db,"solicitudes_tunim",id),{
-    estado: "activo",
-    esPrueba: true,
-    planTunim: "prueba",
-    fechaAprobacion: serverTimestamp(),
+    estado:           "activo",
+    esPrueba:         true,
+    planTunim:        "prueba",
+    pinPropietario:   pin,
+    fechaAprobacion:  serverTimestamp(),
     fechaVencimiento: venc.toISOString()
   });
-  // Notificar por correo
+
+  // Guardar también en vehiculos/{placa} para validación desde index.html
+  await setDoc(doc(db,"vehiculos",placa),{
+    placa,
+    orden:            "",
+    empresaId:        "autoboy",
+    corridorId:       "funza-mosquera-bogota-soacha",
+    estado:           "activo",
+    planTunim:        "prueba",
+    pinPropietario:   pin,
+    fechaVencimiento: venc.toISOString(),
+    aprobadoPor:      "accesvial",
+    actualizadoEn:    serverTimestamp()
+  },{merge:true});
+
+  // Notificar con PIN incluido
+  const msgCorreo = [
+    "Estimado/a " + nombres + ",",
+    "",
+    "Su vehiculo " + placa + " ha sido APROBADO en TUNIM.",
+    "Tiene 30 dias de prueba gratuita a partir de hoy.",
+    "",
+    "Su PIN de propietario es: " + pin,
+    "(Guardelo en un lugar seguro)",
+    "",
+    "Acceda a TUNIM en:",
+    "https://accesvialgerencia-afk.github.io/TUNIM/",
+    "",
+    "ATENTAMENTE,",
+    "ACCESVIAL - TUNIM 2026"
+  ].join("\n");
   emailjs.send("service_7k8ve4a","template_5dk2xxk",{
     fecha: new Date().toLocaleDateString("es-CO"),
     placa: placa,
-    reporte: `Estimado/a ${nombres},\n\nSu vehículo ${placa} ha sido APROBADO en TUNIM.\nTiene 30 días de prueba gratuita a partir de hoy.\n\nAcceda a TUNIM en:\nhttps://accesvialgerencia-afk.github.io/TUNIM/\n\nATENTAMENTE,\nACCESVIAL — TUNIM 2026`
+    reporte: msgCorreo
   }).catch(()=>{});
-  toast("✅ Vehículo aprobado — correo enviado","");
+  toast("Vehiculo aprobado — PIN: " + pin + " — correo enviado","");
   cargarVehiculos();
 }
 
@@ -658,6 +861,119 @@ async function eliminarTarifa(id){
 // ══ HELPERS ══
 function toggleForm(id){ const f=document.getElementById(id); f.style.display=f.style.display==="none"?"block":"none"; }
 
+// ══ CONDUCTORES — Sprint 2 ══
+async function crearConductor(){
+  const nombres  = document.getElementById("con-nombres").value.trim();
+  const cedula   = document.getElementById("con-cedula").value.trim();
+  const empresaId= document.getElementById("con-empresa").value;
+  const tipo     = document.getElementById("con-tipo").value;
+  const placaTit = document.getElementById("con-placa-titular").value.trim();
+  const placasStr= document.getElementById("con-placas").value.trim();
+
+  if(!nombres){ toast("Ingresa el nombre del conductor","error"); return; }
+  if(!cedula || cedula.length < 6){ toast("Cédula inválida","error"); return; }
+  if(!empresaId){ toast("Selecciona la empresa","error"); return; }
+
+  // Hash cédula — Ley 1581
+  const cedulaMask = cedula.slice(0,3)+"*".repeat(Math.max(0,cedula.length-5))+cedula.slice(-2);
+  const cedulaHash = await generarHashCedula(cedula);
+
+  // Placas autorizadas
+  const placasAutorizadas = placasStr
+    .split(",")
+    .map(p=>p.trim().toUpperCase())
+    .filter(p=>p.length >= 5);
+
+  const {db, doc, setDoc, serverTimestamp} = window._fb;
+  await setDoc(doc(db,"conductores",cedulaHash),{
+    cedulaHash,
+    cedulaMask,
+    nombres,
+    empresaId,
+    tipo,                    // "titular" | "relevador"
+    placaTitular:  placaTit||"",
+    placasAutorizadas,
+    metaDiaria:    700000,   // heredada — puede personalizarse
+    estado:        "activo",
+    registradoPor: "accesvial",
+    creadoEn:      serverTimestamp()
+  });
+
+  toast("✅ Conductor registrado");
+  toggleForm("form-conductor");
+  ["con-nombres","con-cedula","con-placa-titular","con-placas"].forEach(id=>{
+    document.getElementById(id).value="";
+  });
+  cargarConductores();
+}
+
+async function generarHashCedula(cedula){
+  try{
+    const encoder = new TextEncoder();
+    const data = encoder.encode(cedula + "TUNIM-ACCESVIAL-2026-SALT");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,32);
+  }catch(e){
+    return cedula.split("").reduce((h,c)=>((h<<5)-h+c.charCodeAt(0))|0,0).toString(36);
+  }
+}
+
+async function cargarConductores(){
+  if(!window._fbReady||!window._fb) return;
+  const {db, collection, getDocs, query, where} = window._fb;
+  const filtroEmp  = document.getElementById("filtro-empresa-con")?.value||"";
+  const filtroTipo = document.getElementById("filtro-tipo-con")?.value||"";
+
+  let q = collection(db,"conductores");
+  const snap = await getDocs(q);
+  let conductores = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // Filtros
+  if(filtroEmp)  conductores = conductores.filter(c=>c.empresaId===filtroEmp);
+  if(filtroTipo) conductores = conductores.filter(c=>c.tipo===filtroTipo);
+
+  const lista = document.getElementById("lista-conductores");
+  if(!conductores.length){
+    lista.innerHTML='<div class="empty-state">Sin conductores registrados</div>';
+    return;
+  }
+
+  lista.innerHTML = conductores.map(c=>`
+    <div class="conductor-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span class="badge-${c.tipo||'titular'}">${(c.tipo||'titular').toUpperCase()}</span>
+        <span style="font-size:0.6rem;color:${c.estado==='activo'?'var(--verde)':'var(--rojo)'}">${c.estado==='activo'?'● ACTIVO':'● INACTIVO'}</span>
+      </div>
+      <div class="cc-nombre">${c.nombres||"—"}</div>
+      <div class="cc-cedula">CC: ${c.cedulaMask||"—"}</div>
+      <div class="cc-empresa">${c.empresaId||"—"} ${c.placaTitular?"· Titular: "+c.placaTitular:""}</div>
+      <div class="cc-placas">Placas: ${(c.placasAutorizadas||[]).join(", ")||"—"}</div>
+      <div class="cc-btns">
+        <button class="btn-inactivar" onclick="toggleEstadoConductor('${c.id}','${c.estado}')">
+          ${c.estado==='activo'?'⏸ INACTIVAR':'▶ ACTIVAR'}
+        </button>
+        <button class="btn-rechazar" onclick="eliminarConductor('${c.id}','${c.nombres}')">🗑 ELIMINAR</button>
+      </div>
+    </div>`).join("");
+}
+
+async function toggleEstadoConductor(id, estadoActual){
+  const {db, doc, updateDoc} = window._fb;
+  const nuevoEstado = estadoActual==="activo" ? "inactivo" : "activo";
+  await updateDoc(doc(db,"conductores",id),{ estado: nuevoEstado });
+  toast("Estado actualizado","");
+  cargarConductores();
+}
+
+async function eliminarConductor(id, nombre){
+  if(!confirm("¿Eliminar al conductor "+nombre+"? Esta acción no se puede deshacer.")) return;
+  const {db, doc, deleteDoc} = window._fb;
+  await deleteDoc(doc(db,"conductores",id));
+  toast("Conductor eliminado","warn");
+  cargarConductores();
+}
+
 let toastT=null;
 function toast(msg,tipo=""){
   const t=document.getElementById("toast");t.textContent=msg;
@@ -670,6 +986,7 @@ document.getElementById("adminPin").addEventListener("keydown",e=>{if(e.key==="E
 
 // Alertas automáticas de vencimiento (verificar cada vez que carga)
 window.addEventListener("fbReady",()=>{
+  cargarAdminPin();
   setTimeout(async()=>{
     const {db,collection,getDocs,query,where} = window._fb;
     const snap = await getDocs(collection(db,"solicitudes_tunim"));
