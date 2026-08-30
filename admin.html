@@ -505,31 +505,52 @@ let todosVehiculos = [];
 // solicitudes_tunim debe tener su documento espejo en vehiculos/, ya que
 // index.html valida SOLO contra esa colección.
 async function repararVehiculosFaltantes(){
-  const {db, doc, getDoc, setDoc, collection, getDocs, serverTimestamp} = window._fb;
-  const snap = await getDocs(collection(db,"solicitudes_tunim"));
-  const activos = snap.docs.map(d=>({id:d.id,...d.data()})).filter(v=>v.estado==="activo"&&v.placa);
+  const btn = event?.target;
+  const textoOriginal = btn?.textContent;
+  try{
+    // ── Verificar que Firebase esté listo antes de continuar ──
+    if(!window._fbReady || !window._fb){
+      toast("⚡ Firebase aún no está listo — espera unos segundos e intenta de nuevo","error");
+      return;
+    }
 
-  let creados = 0, yaExistian = 0;
-  for(const v of activos){
-    const snapVeh = await getDoc(doc(db,"vehiculos",v.placa));
-    if(snapVeh.exists()){ yaExistian++; continue; }
+    // ── Señal visual de que está trabajando ──
+    if(btn){ btn.textContent = "⏳ Reparando..."; btn.disabled = true; }
 
-    await setDoc(doc(db,"vehiculos",v.placa),{
-      placa:            v.placa,
-      orden:            v.orden||"",
-      empresaId:        "autoboy",
-      corridorId:       "funza-mosquera-bogota-soacha",
-      estado:           "activo",
-      planTunim:        v.planTunim||"prueba",
-      pinPropietario:   v.pinPropietario||generarPIN(),
-      fechaVencimiento: v.fechaVencimiento||"",
-      aprobadoPor:      "accesvial-reparacion",
-      reparadoEn:       serverTimestamp()
-    },{merge:true});
-    creados++;
+    const {db, doc, getDoc, setDoc, collection, getDocs, serverTimestamp} = window._fb;
+    const snap = await getDocs(collection(db,"solicitudes_tunim"));
+    const activos = snap.docs.map(d=>({id:d.id,...d.data()})).filter(v=>v.estado==="activo"&&v.placa);
+
+    console.log("Reparación: encontradas", activos.length, "solicitudes activas");
+
+    let creados = 0, yaExistian = 0;
+    for(const v of activos){
+      const snapVeh = await getDoc(doc(db,"vehiculos",v.placa));
+      if(snapVeh.exists()){ yaExistian++; continue; }
+
+      await setDoc(doc(db,"vehiculos",v.placa),{
+        placa:            v.placa,
+        orden:            v.orden||"",
+        empresaId:        "autoboy",
+        corridorId:       "funza-mosquera-bogota-soacha",
+        estado:           "activo",
+        planTunim:        v.planTunim||"prueba",
+        pinPropietario:   v.pinPropietario||generarPIN(),
+        fechaVencimiento: v.fechaVencimiento||"",
+        aprobadoPor:      "accesvial-reparacion",
+        reparadoEn:       serverTimestamp()
+      },{merge:true});
+      creados++;
+      console.log("Reparado:", v.placa);
+    }
+    toast(`✅ Reparación completa — ${creados} creados, ${yaExistian} ya existían`,"");
+    cargarVehiculos();
+  }catch(e){
+    console.error("Error en reparación:", e);
+    toast("❌ Error: " + e.message, "error");
+  }finally{
+    if(btn){ btn.textContent = textoOriginal; btn.disabled = false; }
   }
-  toast(`✅ Reparación completa — ${creados} creados, ${yaExistian} ya existían`,"");
-  cargarVehiculos();
 }
 
 async function cargarVehiculos(){
