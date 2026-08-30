@@ -1014,6 +1014,22 @@ const TRAMOS_TIEMPO = [
     finLat: 4.702845, finLng: -74.226423, finRadio: 250,
     limiteMin: 20,
     sentido: "vuelta"
+  },
+  {
+    id: "llanos_autopistaSur",
+    nombre: "Llanos → Autopista Sur",
+    inicioId: "llanos",
+    finLat: 4.564810, finLng: -74.236428, finRadio: 250,
+    limiteMin: 17,
+    sentido: "ida"
+  },
+  {
+    id: "ciudadVerde_controlMosqueraFunza",
+    nombre: "Ciudad Verde → Control Mosquera-Funza",
+    inicioId: "ciudad_verde",
+    finLat: 4.599428, finLng: -74.212575, finRadio: 250,
+    limiteMin: 17,
+    sentido: "ida"
   }
 ];
 
@@ -1485,6 +1501,18 @@ function alEntrarGeocercaOperativa(geo){
   if((geo.tipo === "origen" || geo.tipo === "origen_bifurcacion") && !origenOperativo){
     origenOperativo = geo;
     horaOrigenGPS = hora;
+
+    // ── CORRECCIÓN: sincronizar dirección con el sentido de la geocerca ──
+    // Esto es más confiable que el GPS por latitud, que puede fallar con
+    // ruido urbano (curvas, tráfico, semáforos). La geocerca operativa
+    // ya sabe si es zona de salida "ida" o "vuelta".
+    if(geo.sentido && geo.sentido !== direccionRuta){
+      direccionRuta = geo.sentido;
+      historialLatitudes = [];
+      cambiosDireccionPendientes = 0;
+      console.log("🧭 Dirección sincronizada por geocerca operativa:", geo.sentido);
+    }
+
     // Actualizar configTurno con origen real
     if(configTurno){
       configTurno.origenOperativo = geo.nombre;
@@ -1905,7 +1933,7 @@ function esperarFirebase(timeout=8000){
   });
 }
 
-async function cargarTurnoDesdeFirebase(placa, fecha){
+async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
   mostrarToast("🔄 Conectando con la nube...","");
   // Esperar Firebase hasta 8 segundos
   const listo = await esperarFirebase(8000);
@@ -1915,7 +1943,11 @@ async function cargarTurnoDesdeFirebase(placa, fecha){
   }
   try{
     const {db,doc,getDoc}=window._fb;
-    const snap=await getDoc(doc(db,"turnos_activos",placa+"_"+fecha));
+    // ── CORRECCIÓN CRÍTICA: buscar por idTurno, la llave real usada
+    // al guardar en sincronizarConfigFirebase() — antes buscaba por
+    // "placa_fecha" que nunca coincidía con la key real guardada. ──
+    const idTurnoBusqueda = generarIdTurno(placa, cedula||"0", fecha);
+    const snap=await getDoc(doc(db,"turnos_activos",idTurnoBusqueda));
     if(snap.exists()){
       const data=snap.data();
       if(data.conteos&&data.conteos.length===RUTAS.length){
@@ -1924,14 +1956,20 @@ async function cargarTurnoDesdeFirebase(placa, fecha){
         estado.historial=data.historial||[];
         estado.diaActual=fecha;
         viajeActual=data.viajeActual||1;
+        // Restaurar también origen/destino operativo si existían
+        if(data.origenOperativo){
+          const geoOrigen = GEOCERCAS_OPERATIVAS.find(g=>g.nombre===data.origenOperativo);
+          if(geoOrigen){ origenOperativo = geoOrigen; geocercasOperativasActivas.add(geoOrigen.id); }
+        }
         guardarEstado();
         actualizarUI();
         setViaje(viajeActual);
-        mostrarToast("✅ Turno restaurado desde la nube","");
+        mostrarToast("✅ Turno restaurado — "+(data.totalPasajeros||0)+" pax","");
         hablar("Turno restaurado. Bienvenido de nuevo.",0.9,1.1);
         return;
       }
     }
+    console.log("No se encontró turno previo con idTurno:", idTurnoBusqueda);
     mostrarToast("✅ Nuevo turno iniciado","");
   }catch(e){
     console.warn("Error cargando turno:",e);
@@ -2000,17 +2038,33 @@ async function sincronizarConfigFirebase(){
       actualizadoEn:serverTimestamp()
     },{merge:true});
     // Guardar estado completo para sincronizar entre dispositivos
-    await setDoc(doc(db,"turnos_activos",key),{
-      placa:configTurno.placa,fecha:configTurno.fechaInicio,
+    await setDoc(doc(db,"turnos_activos",idTurno),{
+      idTurno,
+      placa:configTurno.placa,
+      cedulaConductor:configTurno.cedula||"",
+      nombreConductor:configTurno.nombreConductor||"",
+      empresa:configTurno.empresa||"Autoboy",
+      corredor:configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      fecha:configTurno.fechaInicio,
       horaInicio:configTurno.horaInicio,
+      estadoTurno:"Activo",
       conteos:estado.conteos,
       conteosViaje:estado.conteosViaje,
       historial:estado.historial.slice(0,50),
       viajeActual:viajeActual,
+      origenOperativo: (typeof origenOperativo!=="undefined"&&origenOperativo)?origenOperativo.nombre:"",
+      destinoOperativo: (typeof destinoOperativo!=="undefined"&&destinoOperativo)?destinoOperativo.nombre:"",
       totalPasajeros:estado.conteos.reduce((a,b)=>a+b,0),
       totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
       actualizadoEn:serverTimestamp()
     },{merge:true});
+
+    // ── Puente para el Portal Propietario — solo referencia al idTurno de hoy ──
+    // No expone datos sensibles del conductor; solo permite ubicar el turno.
+    await setDoc(doc(db,"vehiculos",configTurno.placa),{
+      turnoActivoHoyId: idTurno
+    },{merge:true});
+
     setSyncStatus("ok");
   }catch(e){
     console.warn("Firebase sync error:",e);
@@ -2119,7 +2173,10 @@ function cargarEstado(){
     const d=localStorage.getItem(STORAGE_KEY);
     if(d){
       const p=JSON.parse(d);
-      if(p.diaActual&&p.diaActual!==diaKey()){liquidarDia(p);return estadoDefault();}
+      // ── CORRECCIÓN: ya NO liquida automáticamente al cambiar de fecha ──
+      // El turno del conductor puede cruzar medianoche sin terminar.
+      // El cierre real ocurre solo cuando el conductor lo confirma
+      // (ver verificarCambioDia() + modal de confirmación).
       if(!p.conteos||p.conteos.length!==RUTAS.length)return estadoDefault();
       if(!p.conteosViaje)p.conteosViaje=[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
       return p;
@@ -2191,14 +2248,56 @@ function cargarHistDias(){
   return[];
 }
 
+// ── CORRECCIÓN: confirmación del conductor antes de cerrar por fecha ──
+// El turno puede cruzar medianoche sin terminar. En vez de liquidar
+// automáticamente, se avisa 1 hora después de las 00:00 y se espera
+// confirmación explícita del conductor.
+let avisoCambioDiaMostrado = false;
+
 function verificarCambioDia(){
   const hoy=diaKey();
-  if(estado.diaActual&&estado.diaActual!==hoy){
-    liquidarDia(estado);estado=estadoDefault();viajeActual=1;
-    guardarEstado();actualizarUI();mostrarToast("📅 Nuevo día — datos liquidados","warn");
+  if(!estado.diaActual || estado.diaActual===hoy) return;
+
+  // Ya cambió la fecha calendario — calcular cuánto tiempo lleva así
+  const ahora = new Date();
+  const minutosDesdeManoche = ahora.getHours()*60 + ahora.getMinutes();
+
+  // Esperar 1 hora (60 min) después de medianoche antes de avisar
+  if(minutosDesdeManoche < 60) return;
+
+  if(!avisoCambioDiaMostrado){
+    avisoCambioDiaMostrado = true;
+    mostrarModalConfirmarCierre();
   }
 }
 setInterval(verificarCambioDia,60000);
+
+function mostrarModalConfirmarCierre(){
+  const totalPax = estado.conteos.reduce((a,b)=>a+b,0);
+  const totalDin = estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const seguir = confirm(
+    "Tu turno sigue activo desde ayer.\n\n"+
+    "Llevas "+totalPax+" pasajeros — $"+totalDin.toLocaleString("es-CO")+"\n\n"+
+    "¿Ya terminaste y liquidaste tus datos?\n\n"+
+    "Aceptar = Sí, cerrar y empezar turno nuevo\n"+
+    "Cancelar = No, seguir trabajando en este turno"
+  );
+  if(seguir){
+    liquidarDia(estado);
+    estado=estadoDefault();
+    viajeActual=1;
+    guardarEstado();
+    actualizarUI();
+    mostrarToast("📅 Turno anterior liquidado — turno nuevo iniciado","");
+    auditLog("CIERRE_TURNO_CONFIRMADO","Confirmado por conductor tras cambio de fecha","info");
+  } else {
+    // Sigue trabajando — actualizar diaActual para no volver a preguntar hasta la próxima medianoche
+    estado.diaActual = diaKey();
+    guardarEstado();
+    mostrarToast("👍 Turno continúa activo","");
+    auditLog("CIERRE_TURNO_POSPUESTO","Conductor eligió seguir trabajando","info");
+  }
+}
 
 // ══ VIAJES ══
 function setViaje(n){
@@ -2423,25 +2522,43 @@ let direccionRuta = "ida"; // "ida"=Soacha→Funza | "vuelta"=Funza→Soacha
 let historialLatitudes = [];
 const MAX_HIST_LAT = 10;
 
+// ── CORRECCIÓN: detección de dirección robusta contra ruido GPS ──
+// El origen operativo (detectado por geocerca) es la fuente de verdad.
+// El GPS por latitud solo CONFIRMA el sentido, con umbral alto y
+// promedio de todo el historial (no solo 2 puntos) para filtrar ruido
+// de curvas, semáforos y tráfico urbano.
+let cambiosDireccionPendientes = 0;
+const CONFIRMACIONES_REQUERIDAS = 3; // evita cambios por ruido puntual
+
 function detectarDireccion(lat){
   historialLatitudes.push(lat);
   if(historialLatitudes.length > MAX_HIST_LAT){
     historialLatitudes.shift();
   }
-  if(historialLatitudes.length < 4) return;
-  // Comparar promedio de últimas 2 vs primeras 2 del historial
-  const antiguas = (historialLatitudes[0] + historialLatitudes[1]) / 2;
-  const recientes = (historialLatitudes[historialLatitudes.length-1] + historialLatitudes[historialLatitudes.length-2]) / 2;
+  if(historialLatitudes.length < MAX_HIST_LAT) return; // esperar historial completo
+
+  // Promedio de la primera mitad vs segunda mitad de todo el historial
+  const mitad = Math.floor(historialLatitudes.length/2);
+  const antiguas = historialLatitudes.slice(0,mitad).reduce((a,b)=>a+b,0)/mitad;
+  const recientes = historialLatitudes.slice(mitad).reduce((a,b)=>a+b,0)/(historialLatitudes.length-mitad);
   const diff = recientes - antiguas;
-  if(Math.abs(diff) > 0.0008){
-    // diff > 0 = latitud aumentando = moviendo hacia norte = Funza
-    // diff < 0 = latitud disminuyendo = moviendo hacia sur = Soacha
-    const nueva = diff > 0 ? "ida" : "vuelta";
-    if(nueva !== direccionRuta){
-      direccionRuta = nueva;
-      const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
-      mostrarToast(msg, "");
-      console.log("Dirección detectada:", direccionRuta, "diff:", diff.toFixed(6));
+
+  // Umbral más alto (0.002 ≈ 220m) — filtra ruido de vía urbana
+  if(Math.abs(diff) > 0.002){
+    const propuesta = diff > 0 ? "ida" : "vuelta";
+    if(propuesta !== direccionRuta){
+      cambiosDireccionPendientes++;
+      // Requiere varias lecturas consecutivas en el mismo sentido antes de cambiar
+      if(cambiosDireccionPendientes >= CONFIRMACIONES_REQUERIDAS){
+        direccionRuta = propuesta;
+        cambiosDireccionPendientes = 0;
+        historialLatitudes = []; // reiniciar para la próxima detección
+        const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
+        mostrarToast(msg, "");
+        console.log("Dirección CONFIRMADA:", direccionRuta, "diff:", diff.toFixed(6));
+      }
+    } else {
+      cambiosDireccionPendientes = 0; // se mantiene el sentido actual, resetear contador
     }
   }
 }
