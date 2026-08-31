@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TUNIM — Reportes</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- Firebase — archivo independiente, no comparte estado con index.html ni propietario.html -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, collection, query, where, getDocs }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+  import { getAuth, signInAnonymously }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+    authDomain: "tunim-9064e.firebaseapp.com",
+    projectId: "tunim-9064e",
+    storageBucket: "tunim-9064e.firebasestorage.app",
+    messagingSenderId: "948598556990",
+    appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+  const auth = getAuth(app);
+
+  window._fb = { db, doc, getDoc, collection, query, where, getDocs };
+  window._fbReady = false;
+
+  signInAnonymously(auth).then(()=>{
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  }).catch(()=>{
+    window._fbReady = true;
+    window.dispatchEvent(new Event("fbReady"));
+  });
+</script>
+
+<style>
+:root{
+  --noche-0:#080B10; --noche-1:#0D1219; --noche-2:#141B25;
+  --linea:#26303D; --linea-fuerte:#3A4757;
+  --texto:#EAF0F7; --texto-sec:#8C9BAF; --texto-mute:#5A6779;
+  --ambar:#FFB020; --ambar-suave:#3A2B0F;
+  --verde:#2FD48A; --verde-suave:#0F2B21;
+  --rojo:#FF5D5D; --rojo-suave:#3A1414;
+  --azul:#4FA3F7;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--texto);font-family:'Inter',sans-serif}
+.wrap{max-width:460px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── LOGIN (idéntico a propietario.html — misma identidad de acceso) ── */
+.login-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:2.6rem;letter-spacing:5px}
+.login-logo span{color:var(--ambar)}
+.login-sub{font-size:0.68rem;color:var(--texto-mute);letter-spacing:2px;text-transform:uppercase;margin:6px 0 36px}
+.login-form{width:100%;display:flex;flex-direction:column;gap:12px}
+.f-label{font-size:0.6rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--texto-mute);margin-bottom:5px;display:block}
+.f-input{width:100%;background:var(--noche-2);border:1.5px solid var(--linea);border-radius:12px;padding:13px 14px;color:var(--texto);font-family:'JetBrains Mono',monospace;font-size:1rem;letter-spacing:2px;text-transform:uppercase;outline:none;transition:border-color .15s}
+.f-input:focus{border-color:var(--ambar)}
+.f-input.pin{letter-spacing:8px;text-align:center}
+.btn-primary{width:100%;padding:15px;background:var(--ambar);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;color:#1A1200;margin-top:6px}
+.btn-primary:active{transform:scale(0.98)}
+.login-error{color:var(--rojo);font-size:0.78rem;text-align:center;padding:8px;background:var(--rojo-suave);border-radius:8px;display:none}
+
+/* ── HEADER APP ── */
+.app-screen{display:none;flex:1;flex-direction:column}
+.header{padding:16px 20px 12px;background:var(--noche-1);border-bottom:1px solid var(--linea);display:flex;align-items:center;justify-content:space-between}
+.header-marca{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px}
+.header-marca span{color:var(--ambar)}
+.header-placa{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ambar);letter-spacing:2px;margin-top:2px}
+.btn-salir{background:none;border:1px solid var(--linea);color:var(--texto-mute);font-size:0.6rem;padding:5px 10px;border-radius:14px;cursor:pointer}
+
+/* ── SELECTOR DE RANGO ── */
+.rango-tabs{display:flex;gap:8px;padding:14px 20px 6px;overflow-x:auto}
+.rango-tab{flex:none;padding:9px 16px;border-radius:20px;border:1px solid var(--linea);background:var(--noche-2);color:var(--texto-sec);font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.rango-tab.activo{background:var(--ambar);border-color:var(--ambar);color:#1A1200}
+
+/* ── CONTENIDO ── */
+.contenido{flex:1;padding:12px 20px 24px}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.metric-card{background:var(--noche-2);border:1px solid var(--linea);border-radius:14px;padding:16px}
+.metric-lbl{font-size:0.56rem;color:var(--texto-mute);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.metric-val{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;line-height:1}
+
+.seccion-titulo{font-size:0.6rem;color:var(--texto-mute);letter-spacing:1.5px;text-transform:uppercase;margin:20px 0 10px}
+
+.dia-card{background:var(--noche-2);border:1px solid var(--linea);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.dia-fecha{font-size:0.8rem;font-weight:600}
+.dia-sub{font-size:0.62rem;color:var(--texto-mute);margin-top:2px}
+.dia-monto{font-family:'Bebas Neue',sans-serif;font-size:1.15rem}
+.dia-dot{width:8px;height:8px;border-radius:50%;margin-right:10px;flex-shrink:0}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--texto-mute)}
+.empty-state-icono{font-size:2rem;margin-bottom:10px;opacity:0.5}
+.empty-state-txt{font-size:0.85rem}
+
+.loading-state{text-align:center;padding:30px 20px;color:var(--texto-mute);font-size:0.8rem}
+
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--verde);color:#052B1C;padding:9px 20px;border-radius:30px;font-size:0.8rem;font-weight:700;opacity:0;transition:all .2s;z-index:9999;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{background:var(--rojo);color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ══ LOGIN ══ -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-logo">TU<span>NIM</span></div>
+    <div class="login-sub">Reportes por vehículo</div>
+    <div class="login-form">
+      <div>
+        <label class="f-label">Placa o número de orden</label>
+        <input class="f-input" id="inputIdent" type="text" placeholder="TAL-866 o 042" autocomplete="off">
+      </div>
+      <div>
+        <label class="f-label">PIN</label>
+        <input class="f-input pin" id="inputPin" type="password" maxlength="6" placeholder="••••" autocomplete="off">
+      </div>
+      <div class="login-error" id="loginError">PIN incorrecto — verifica tus datos</div>
+      <button class="btn-primary" onclick="iniciarSesion()">▶ VER REPORTES</button>
+    </div>
+  </div>
+
+  <!-- ══ APP ══ -->
+  <div class="app-screen" id="appScreen">
+    <div class="header">
+      <div>
+        <div class="header-marca">TU<span>NIM</span></div>
+        <div class="header-placa" id="headerPlaca">---</div>
+      </div>
+      <button class="btn-salir" onclick="cerrarSesion()">Salir</button>
+    </div>
+
+    <div class="rango-tabs">
+      <button class="rango-tab activo" id="tab-semana" onclick="cambiarRango('semana')">Esta semana</button>
+      <button class="rango-tab" id="tab-mes" onclick="cambiarRango('mes')">Este mes</button>
+      <button class="rango-tab" id="tab-mesAnterior" onclick="cambiarRango('mesAnterior')">Mes anterior</button>
+    </div>
+
+    <div class="contenido">
+      <div id="datosReporte">
+        <div class="loading-state">Cargando reporte...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// TUNIM — Reportes por vehículo | ACCESVIAL 2026
+// Archivo independiente. Solo LECTURA de liquidaciones/ — nunca
+// escribe datos de operación. Reutiliza el mismo login por PIN
+// que propietario.html (misma identidad de acceso).
+//
+// Diseño de consultas: siempre where(placa) + where(fecha en rango)
+// — nunca se trae la colección completa. Ver nota de arquitectura
+// del 30 ago sobre costos de lectura en Firestore.
+// ══════════════════════════════════════════════════════════════
+
+let sesion = null; // { placa, orden }
+let rangoActual = "semana";
+
+function sanitizarIdent(v){
+  return (v||"").toUpperCase().split("").filter(c=>"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-".includes(c)).join("").slice(0,10);
+}
+function sanitizarPin(v){
+  return (v||"").split("").filter(c=>c>="0"&&c<="9").join("").slice(0,6);
+}
+
+function toast(msg, tipo=""){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast " + tipo + " show";
+  setTimeout(()=>el.classList.remove("show"), 2500);
+}
+
+function esperarFirebase(timeout=8000){
+  return new Promise((resolve)=>{
+    if(window._fbReady){ resolve(true); return; }
+    const t = setTimeout(()=>resolve(false), timeout);
+    window.addEventListener("fbReady", ()=>{ clearTimeout(t); resolve(true); }, {once:true});
+  });
+}
+
+// ══ LOGIN — mismo PIN que propietario.html (vehiculos/{placa}.pinPropietario) ══
+async function iniciarSesion(){
+  const ident = sanitizarIdent(document.getElementById("inputIdent").value);
+  const pin = sanitizarPin(document.getElementById("inputPin").value);
+  const errEl = document.getElementById("loginError");
+  errEl.style.display = "none";
+
+  if(!ident || !pin){
+    errEl.textContent = "Completa placa/orden y PIN";
+    errEl.style.display = "block";
+    return;
+  }
+
+  const listo = await esperarFirebase(8000);
+  if(!listo || !window._fb){
+    errEl.textContent = "Sin conexión — intenta de nuevo";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try{
+    const {db, doc, getDoc, collection, query, where, getDocs} = window._fb;
+    let placaReal = ident;
+    let vehData = null;
+
+    let snap = await getDoc(doc(db,"vehiculos",ident));
+    if(snap.exists()){
+      vehData = snap.data();
+    } else {
+      // Buscar por número de orden — mismo patrón que index.html
+      const q = query(collection(db,"vehiculos"), where("orden","==",ident));
+      const snapOrden = await getDocs(q);
+      if(!snapOrden.empty){
+        vehData = snapOrden.docs[0].data();
+        placaReal = snapOrden.docs[0].id;
+      }
+    }
+
+    if(!vehData){
+      errEl.textContent = "Vehículo no encontrado";
+      errEl.style.display = "block";
+      return;
+    }
+
+    if(vehData.pinPropietario !== pin){
+      errEl.textContent = "PIN incorrecto — verifica tus datos";
+      errEl.style.display = "block";
+      return;
+    }
+
+    sesion = { placa: placaReal, orden: vehData.orden||"" };
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("appScreen").style.display = "flex";
+    document.getElementById("headerPlaca").textContent = placaReal + (vehData.orden ? " · Orden " + vehData.orden : "");
+
+    cargarReporte();
+
+  }catch(e){
+    console.warn("Error login reportes:", e);
+    errEl.textContent = "Error de conexión — intenta de nuevo";
+    errEl.style.display = "block";
+  }
+}
+
+function cerrarSesion(){
+  sesion = null;
+  document.getElementById("appScreen").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("inputPin").value = "";
+}
+
+function cambiarRango(r){
+  rangoActual = r;
+  document.querySelectorAll(".rango-tab").forEach(t=>t.classList.remove("activo"));
+  document.getElementById("tab-"+r).classList.add("activo");
+  cargarReporte();
+}
+
+// ══ Calcular fechas de inicio/fin según el rango elegido ══
+function calcularRangoFechas(rango){
+  const hoy = new Date();
+  const fmt = (d) => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+
+  if(rango === "semana"){
+    const diaSemana = hoy.getDay() === 0 ? 7 : hoy.getDay(); // lunes=1 ... domingo=7
+    const inicio = new Date(hoy);
+    inicio.setDate(hoy.getDate() - (diaSemana - 1));
+    return { desde: fmt(inicio), hasta: fmt(hoy), etiqueta: "Semana del " + fmt(inicio) };
+  }
+  if(rango === "mes"){
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: fmt(inicio), hasta: fmt(hoy), etiqueta: "Mes de " + hoy.toLocaleDateString("es-CO",{month:"long",year:"numeric"}) };
+  }
+  if(rango === "mesAnterior"){
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1);
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+    return { desde: fmt(inicio), hasta: fmt(fin), etiqueta: fin.toLocaleDateString("es-CO",{month:"long",year:"numeric"}) };
+  }
+}
+
+// ══ CARGAR REPORTE — consulta filtrada, nunca trae la colección completa ══
+async function cargarReporte(){
+  if(!sesion || !window._fb) return;
+  const cont = document.getElementById("datosReporte");
+  cont.innerHTML = '<div class="loading-state">Cargando reporte...</div>';
+
+  const { desde, hasta, etiqueta } = calcularRangoFechas(rangoActual);
+
+  try{
+    const {db, collection, query, where, getDocs} = window._fb;
+
+    // ── Consulta bien diseñada: filtra por placa Y rango de fecha ──
+    // Requiere índice compuesto (placa + fecha) — Firestore lo pedirá
+    // la primera vez con un enlace directo para crearlo en 1 clic.
+    const q = query(
+      collection(db,"liquidaciones"),
+      where("placa","==",sesion.placa),
+      where("fecha",">=",desde),
+      where("fecha","<=",hasta)
+    );
+    const snap = await getDocs(q);
+
+    const dias = [];
+    snap.forEach(d => dias.push(d.data()));
+    dias.sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
+
+    const totalRecaudo = dias.reduce((s,d) => s + (d.total||0), 0);
+    const totalPax = dias.reduce((s,d) => s + (d.pax||0), 0);
+    const diasTrabajados = dias.length;
+    const promedioDiario = diasTrabajados > 0 ? Math.round(totalRecaudo/diasTrabajados) : 0;
+
+    let html = `
+      <div class="seccion-titulo">${etiqueta}</div>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-lbl">Recaudo total</div>
+          <div class="metric-val" style="color:var(--ambar)">$${totalRecaudo.toLocaleString("es-CO")}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Pasajeros</div>
+          <div class="metric-val" style="color:var(--verde)">${totalPax}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Días trabajados</div>
+          <div class="metric-val">${diasTrabajados}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-lbl">Promedio diario</div>
+          <div class="metric-val" style="color:var(--azul)">$${promedioDiario.toLocaleString("es-CO")}</div>
+        </div>
+      </div>
+    `;
+
+    if(dias.length === 0){
+      html += `<div class="empty-state">
+        <div class="empty-state-icono">📊</div>
+        <div class="empty-state-txt">Sin liquidaciones registradas en este período</div>
+      </div>`;
+    } else {
+      html += `<div class="seccion-titulo">Detalle por día</div>`;
+      dias.forEach(d => {
+        const meta = 700000;
+        const pct = meta > 0 ? Math.round((d.total||0)/meta*100) : 0;
+        const color = pct >= 100 ? "var(--verde)" : pct >= 70 ? "var(--ambar)" : "var(--rojo)";
+        html += `
+          <div class="dia-card">
+            <div style="display:flex;align-items:center">
+              <div class="dia-dot" style="background:${color}"></div>
+              <div>
+                <div class="dia-fecha">${formatFecha(d.fecha)}</div>
+                <div class="dia-sub">${d.pax||0} pasajeros · ${pct}% de meta</div>
+              </div>
+            </div>
+            <div class="dia-monto" style="color:${color}">$${Math.round((d.total||0)/1000)}k</div>
+          </div>
+        `;
+      });
+    }
+
+    cont.innerHTML = html;
+
+  }catch(e){
+    console.warn("Error cargando reporte:", e);
+    if(e.message && e.message.includes("index")){
+      cont.innerHTML = `<div class="empty-state">
+        <div class="empty-state-icono">⚙️</div>
+        <div class="empty-state-txt">Firestore necesita crear un índice para esta consulta la primera vez.<br><br>Revisa la consola del navegador (F12) — ahí aparece un enlace para crearlo con un clic. Tarda 1-2 minutos.</div>
+      </div>`;
+    } else {
+      cont.innerHTML = '<div class="empty-state"><div class="empty-state-icono">⚠️</div><div class="empty-state-txt">Error cargando el reporte. Intenta de nuevo.</div></div>';
+    }
+  }
+}
+
+function formatFecha(key){
+  if(!key) return "—";
+  const d = new Date(key+"T12:00:00");
+  const dias = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  return dias[d.getDay()]+" "+d.getDate()+" "+meses[d.getMonth()];
+}
+
+document.addEventListener("keypress", (e)=>{
+  if(e.key === "Enter" && document.getElementById("loginScreen").style.display !== "none"){
+    iniciarSesion();
+  }
+});
+</script>
+</body>
+</html>
