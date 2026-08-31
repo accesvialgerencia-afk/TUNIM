@@ -459,8 +459,8 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   <div class="modal-box">
     <div class="modal-title">TU<span style="color:var(--amarillo)">NIM</span></div>
     <div class="modal-sub">CONFIGURACIÓN DE TURNO · ACCESVIAL 2026</div>
-    <label class="modal-label">Placa del vehículo</label>
-    <input class="modal-input" id="inputPlaca" type="text" maxlength="7" placeholder="TAL-866" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+    <label class="modal-label">Placa o número de orden</label>
+    <input class="modal-input" id="inputPlaca" type="text" maxlength="10" placeholder="TAL-866 ó 042" autocomplete="off" oninput="if(!/^[0-9]+$/.test(this.value)) this.value=this.value.toUpperCase()">
     <label class="modal-label">Cédula del conductor <span style="color:var(--rojo)">*</span></label>
     <input class="modal-input" id="inputCedula" type="number" placeholder="12345678" autocomplete="off" style="letter-spacing:2px">
     <label class="modal-label">Nombre del conductor <span style="color:var(--muted2);font-size:0.65rem">(opcional)</span></label>
@@ -881,15 +881,31 @@ async function validarYCargarTurno(placa, cedula){
   try{
     const {db, doc, getDoc, collection, query, where, getDocs} = window._fb;
 
-    // PASO 1 — Validar placa en vehiculos/
+    // PASO 1 — Validar por placa O número de orden en vehiculos/
     mostrarEst("🔍 Verificando vehículo...","warn");
-    const snapVeh = await getDoc(doc(db,"vehiculos",placa));
+    let snapVeh = await getDoc(doc(db,"vehiculos",placa));
+    let placaReal = placa;
 
     if(!snapVeh.exists()){
-      // Modo flexible — vehículo no registrado pero permitido (piloto Autoboy)
-      mostrarEst("⚠️ Vehículo no registrado — modo piloto","warn");
-      auditLog("VEHICULO_NO_REGISTRADO","Placa:"+placa,"warn");
-      return {ok:true, modo:"piloto", empresa:"Autoboy", corredor:"funza-mosquera-bogota-soacha", empresaNombre:"Autoboy"};
+      // No existe como placa directa — intentar como número de orden
+      // (búsqueda flexible: el conductor puede ingresar "042" en vez de "TAL-866")
+      const q = query(collection(db,"vehiculos"), where("orden","==",placa));
+      const snapOrden = await getDocs(q);
+      if(!snapOrden.empty){
+        snapVeh = snapOrden.docs[0];
+        placaReal = snapVeh.id; // la placa real es el ID del documento encontrado
+        console.log("🔢 Vehículo encontrado por número de orden:", placa, "→ placa real:", placaReal);
+      }
+    }
+
+    if(!snapVeh.exists()){
+      // ── CIERRE DE MODO PILOTO (30 ago 2026) ──
+      // Antes se permitía continuar con cualquier placa no registrada.
+      // Ahora se exige que el vehículo exista y esté activo en Firestore.
+      mostrarEst("❌ Vehículo no autorizado — contacta a ACCESVIAL","err");
+      auditLog("VEHICULO_NO_REGISTRADO","Placa/Orden:"+placa,"security");
+      registrarIntentoFallido("Vehículo no registrado: "+placa);
+      return {ok:false};
     }
 
     const veh = snapVeh.data();
@@ -902,33 +918,50 @@ async function validarYCargarTurno(placa, cedula){
       return {ok:false};
     }
 
-    if(veh.fechaVencimiento){
-      const hoy = new Date().toISOString().slice(0,10);
-      if(hoy > veh.fechaVencimiento){
-        mostrarEst("❌ Suscripción vencida — contacta ACCESVIAL","err");
-        auditLog("SUSCRIPCION_VENCIDA","Placa:"+placa,"security");
-        return {ok:false};
-      }
+    // ── DESACTIVADO (30 ago 2026) — etapa de maduración del producto ──
+    // Mientras no exista cobro real de suscripciones, no se bloquea por
+    // fecha de vencimiento. Reactivar esta validación cuando arranque
+    // el ciclo de facturación real (Sprint 4 — Rentabilidad).
+    //
+    // if(veh.fechaVencimiento){
+    //   const hoy = new Date().toISOString().slice(0,10);
+    //   if(hoy > veh.fechaVencimiento){
+    //     mostrarEst("❌ Suscripción vencida — contacta ACCESVIAL","err");
+    //     auditLog("SUSCRIPCION_VENCIDA","Placa:"+placa,"security");
+    //     return {ok:false};
+    //   }
+    // }
+
+    // PASO 3 — Validar cédula en conductores/ (buscando por HASH, igual que admin.html)
+    mostrarEst("🔍 Verificando conductor...","warn");
+    if(!cedula){
+      mostrarEst("❌ Cédula requerida","err");
+      return {ok:false};
+    }
+    // ── CORRECCIÓN: usar el mismo hash que admin.html al registrar (cedulaHash) ──
+    const cedulaHashBusqueda = await hashSHA(cedula);
+    const snapCond = await getDoc(doc(db,"conductores",cedulaHashBusqueda));
+
+    if(!snapCond.exists()){
+      // ── CIERRE DE MODO PILOTO DE CÉDULA (30 ago 2026) ──
+      // Antes se permitía continuar sin conductor registrado.
+      // Ahora se exige registro previo — necesario para calcular comisiones por productividad.
+      mostrarEst("❌ Conductor no registrado — contacta a ACCESVIAL","err");
+      auditLog("CONDUCTOR_NO_REGISTRADO","CC-hash:"+cedulaHashBusqueda,"security");
+      registrarIntentoFallido("Conductor no registrado");
+      return {ok:false};
     }
 
-    // PASO 3 — Validar cédula en conductores/
-    mostrarEst("🔍 Verificando conductor...","warn");
-    if(cedula){
-      const snapCond = await getDoc(doc(db,"conductores",cedula));
-      if(snapCond.exists()){
-        const cond = snapCond.data();
-        if(cond.estado !== "activo"){
-          mostrarEst("❌ Conductor inactivo — contacta ACCESVIAL","err");
-          auditLog("CONDUCTOR_INACTIVO","CC:"+cedula,"security");
-          return {ok:false};
-        }
-        if(cond.empresaId !== veh.empresaId){
-          mostrarEst("❌ Conductor no autorizado para esta empresa","err");
-          auditLog("CONDUCTOR_EMPRESA_INVALIDA","CC:"+cedula+" Empresa:"+veh.empresaId,"security");
-          return {ok:false};
-        }
-      }
-      // Si conductor no está registrado — modo piloto (flexible para Autoboy)
+    const cond = snapCond.data();
+    if(cond.estado !== "activo"){
+      mostrarEst("❌ Conductor inactivo — contacta ACCESVIAL","err");
+      auditLog("CONDUCTOR_INACTIVO","CC-hash:"+cedulaHashBusqueda,"security");
+      return {ok:false};
+    }
+    if(cond.empresaId !== veh.empresaId){
+      mostrarEst("❌ Conductor no autorizado para esta empresa","err");
+      auditLog("CONDUCTOR_EMPRESA_INVALIDA","CC-hash:"+cedulaHashBusqueda+" Empresa:"+veh.empresaId,"security");
+      return {ok:false};
     }
 
     // PASO 4 — Cargar empresa y corredor
@@ -966,8 +999,8 @@ async function validarYCargarTurno(placa, cedula){
       console.log("⚡ Usando tarifas hardcodeadas (fallback Autoboy)");
     }
 
-    mostrarEst("✅ Vehículo autorizado — " + empresaNombre,"ok");
-    auditLog("TURNO_AUTORIZADO","Placa:"+placa+" Empresa:"+empresaNombre,"info");
+    mostrarEst("✅ Vehículo autorizado — " + empresaNombre + " (" + placaReal + ")","ok");
+    auditLog("TURNO_AUTORIZADO","Placa:"+placaReal+" Empresa:"+empresaNombre,"info");
 
     return {
       ok:        true,
@@ -975,7 +1008,8 @@ async function validarYCargarTurno(placa, cedula){
       empresa:   veh.empresaId,
       empresaNombre,
       corredor:  corridorId,
-      planTunim: veh.planTunim||"basico"
+      planTunim: veh.planTunim||"basico",
+      placaReal: placaReal
     };
 
   }catch(e){
@@ -1867,7 +1901,14 @@ function cargarConfig(){
 
 async function guardarConfigTurno(){
   // P0-04: Sanitizar inputs
-  const placa  = SANITIZE.placa(document.getElementById("inputPlaca").value);
+  // ── Acepta PLACA (ej. TAL-866) o NÚMERO DE ORDEN (ej. 042) ──
+  const inputIdent = document.getElementById("inputPlaca").value;
+  // Si parece solo dígitos (número de orden) no forzamos formato de placa
+  const esSoloNumeros = /^[0-9]+$/.test(inputIdent.trim());
+  const identificador = esSoloNumeros
+    ? inputIdent.trim().slice(0,10)
+    : SANITIZE.placa(inputIdent);
+
   const cedula = document.getElementById("inputCedula") ?
     SANITIZE.cedula(document.getElementById("inputCedula").value) : "";
   const nombre = document.getElementById("inputNombreConductor") ?
@@ -1876,9 +1917,9 @@ async function guardarConfigTurno(){
   const hora   = document.getElementById("inputHoraInicio").value;
 
   // Validaciones básicas con auditoría
-  if(!placa || placa.length < 5){
-    registrarIntentoFallido("Placa inválida: "+placa);
-    mostrarToast("⚠ Placa inválida","alerta"); return;
+  if(!identificador || identificador.length < 3){
+    registrarIntentoFallido("Placa/orden inválido: "+identificador);
+    mostrarToast("⚠ Ingresa placa o número de orden","alerta"); return;
   }
   if(!cedula || cedula.length < 6){
     registrarIntentoFallido("Cédula inválida");
@@ -1886,7 +1927,22 @@ async function guardarConfigTurno(){
   }
   if(!fecha){ mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
 
-  // Generar idTurno SIEMPRE — sin esperar Firebase
+  // ── Resolver número de orden → placa real ANTES de generar idTurno ──
+  // Si hay Firebase disponible, se resuelve de inmediato (rápido, 1-2 lecturas).
+  // Si no hay conexión, se usa el identificador tal cual como respaldo local.
+  // (el estado de verificación se muestra dentro del modal — ver modalEstado)
+  const resultado = await validarYCargarTurno(identificador, cedula);
+
+  // Si el vehículo está suspendido o la suscripción venció, detener aquí
+  // (el mensaje de error ya quedó visible en modalEstado)
+  if(!resultado.ok){
+    mostrarToast("❌ No se pudo iniciar el turno","alerta");
+    return;
+  }
+
+  const placa = resultado.placaReal || identificador;
+
+  // Generar idTurno con la PLACA REAL — nunca con el número de orden
   const idTurno = generarIdTurno(placa, cedula, fecha);
   configTurno={
     idTurno,
@@ -1896,23 +1952,23 @@ async function guardarConfigTurno(){
     fechaInicio:       fecha,
     horaInicio:        hora||"--:--",
     estadoTurno:       "Activo",
-    empresa:           "Autoboy",
-    empresaId:         "autoboy",
-    corredor:          "Funza-Mosquera-Bogotá-Soacha",
-    planTunim:         "basico",
-    modoAcceso:        "local",
+    empresa:           resultado.empresaNombre||"Autoboy",
+    empresaId:         resultado.empresa||"autoboy",
+    corredor:          resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
+    planTunim:         resultado.planTunim||"basico",
+    modoAcceso:        resultado.modo||"local",
     viajesCompletados: 0
   };
   try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
 
-  // ── CERRAR MODAL INMEDIATAMENTE — sin esperar Firebase ──
+  // ── CERRAR MODAL — ya con la placa real resuelta ──
   document.getElementById("modalConfig").style.display="none";
   renderDestinos();
   actualizarUI();
   actualizarBarraVehiculo();
   setViaje(1);
   _intentosFallidos = 0;
-  mostrarToast("✅ Turno iniciado","");
+  mostrarToast("✅ Turno iniciado — "+placa,"");
   auditLog("TURNO_INICIADO","Placa:"+placa+" idTurno:"+idTurno,"info");
 
   // ── Firebase en background — nunca bloquea al conductor ──
@@ -3221,9 +3277,11 @@ function watchdogModal(){
   if(!modal || modal.style.display === "none") return;
   const placaEl = document.getElementById("inputPlaca");
   const cedulaEl = document.getElementById("inputCedula");
-  const placa = placaEl ? SANITIZE.placa(placaEl.value) : "";
+  const rawIdent = placaEl ? placaEl.value.trim() : "";
+  const esSoloNumerosW = /^[0-9]+$/.test(rawIdent);
+  const placa = esSoloNumerosW ? rawIdent.slice(0,10) : SANITIZE.placa(rawIdent);
   const cedula = cedulaEl ? SANITIZE.cedula(cedulaEl.value) : "";
-  if(placa.length >= 5 && cedula.length >= 6){
+  if(placa.length >= 3 && cedula.length >= 6){
     console.warn("WATCHDOG: modal atascado — forzando inicio local");
     auditLog("WATCHDOG_MODAL","Inicio forzado tras 30s","warn");
     const fecha = document.getElementById("inputFecha")?.value || new Date().toISOString().slice(0,10);
