@@ -686,9 +686,11 @@ function renderDashboard(activos, hoy){
 
 // ══ ACCIONES ══
 function generarPIN(){
-  // PIN de 6 caracteres alfanumérico — asignado por ACCESVIAL al aprobar
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join("");
+  // ── AJUSTADO (30 ago 2026) — PIN numérico de 4 dígitos ──
+  // Antes: 6 caracteres alfanuméricos, difícil de escribir en teclado
+  // numérico del portal del propietario. Ahora: 4 dígitos, consistente
+  // con el campo de acceso en propietario.html y reportes.html.
+  return String(Math.floor(1000 + Math.random()*9000));
 }
 
 async function aprobarVehiculo(id, placa, correo, nombres){
