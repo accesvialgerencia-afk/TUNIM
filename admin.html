@@ -231,6 +231,11 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
       <button class="btn-aprobar" style="white-space:nowrap" onclick="repararVehiculosFaltantes()">🔧 Reparar vehículos</button>
     </div>
 
+    <div style="margin-top:10px;padding:12px 14px;background:rgba(232,53,79,0.06);border:1px solid rgba(232,53,79,0.2);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:0.72rem;color:var(--muted)">⚠️ Usar SOLO UNA VEZ: recalcula el contador de pasajeros históricos (antes del 31 ago) leyendo la colección completa. Después de esto, el contador se mantiene solo — no repetir sin necesidad.</div>
+      <button class="btn-rechazar" style="white-space:nowrap" onclick="inicializarContadoresPasajeros()">🔢 Inicializar contadores</button>
+    </div>
+
     <div class="acard">
       <div class="acard-head"><span class="acard-title">🎁 En período de prueba gratuita</span></div>
       <div class="acard-body" id="lista-prueba">
@@ -656,23 +661,75 @@ async function repararVehiculosFaltantes(){
   }
 }
 
-async function cargarVehiculos(){
-  const {db, collection, getDocs, query, where} = window._fb;
-  const snap = await getDocs(collection(db, "solicitudes_tunim"));
-  todosVehiculos = snap.docs.map(d=>({id:d.id,...d.data()}));
+// ── Inicialización ÚNICA del contador de pasajeros (31 ago 2026) ──
+// Esta función SÍ lee toda la colección pasajeros/ — por diseño, es
+// costosa. Se usa una sola vez para migrar los datos históricos al
+// nuevo sistema de contador (increment()). Nunca debe correr en un
+// intervalo automático ni dispararse sin que el administrador la
+// pida explícitamente.
+async function inicializarContadoresPasajeros(){
+  const btn = event?.target;
+  const textoOriginal = btn?.textContent;
+  try{
+    if(!window._fbReady || !window._fb){
+      toast("⚡ Firebase aún no está listo — espera unos segundos","error");
+      return;
+    }
+    if(!confirm("Esto leerá TODOS los pasajeros históricos una sola vez para calcular el contador inicial de cada vehículo.\n\n¿Continuar?")) return;
 
-  // ── Conteo REAL de pasajeros por placa — consulta directa a pasajeros/ ──
-  // (el campo v.totalPasajeros nunca se actualiza; se calcula aquí en vivo)
-  await Promise.all(todosVehiculos.map(async (v)=>{
-    if(!v.placa) return;
-    try{
-      const qPax = query(collection(db,"pasajeros"), where("placa","==",v.placa));
+    if(btn){ btn.textContent = "⏳ Calculando..."; btn.disabled = true; }
+
+    const {db, doc, setDoc, getDoc, collection, getDocs, query, where} = window._fb;
+    const snapSol = await getDocs(collection(db,"solicitudes_tunim"));
+    const placas = [...new Set(snapSol.docs.map(d=>d.data().placa).filter(Boolean))];
+
+    let procesadas = 0;
+    for(const placa of placas){
+      const qPax = query(collection(db,"pasajeros"), where("placa","==",placa));
       const snapPax = await getDocs(qPax);
       let total = 0, recaudo = 0;
       snapPax.forEach(d=>{ total++; recaudo += d.data().precio||0; });
-      v.totalPasajeros = total;
-      v.totalRecaudo = recaudo;
-    }catch(e){ console.warn("Error contando pasajeros de", v.placa, e); }
+
+      await setDoc(doc(db,"vehiculos",placa),{
+        totalPasajeros: total,
+        totalRecaudo: recaudo
+      },{merge:true});
+      procesadas++;
+      console.log("Contador inicializado:", placa, "→", total, "pasajeros");
+    }
+
+    toast(`✅ Contadores inicializados para ${procesadas} vehículo(s)`,"");
+    cargarVehiculos();
+  }catch(e){
+    console.error("Error inicializando contadores:", e);
+    toast("❌ Error: " + e.message, "error");
+  }finally{
+    if(btn){ btn.textContent = textoOriginal; btn.disabled = false; }
+  }
+}
+
+async function cargarVehiculos(){
+  const {db, doc, getDoc, collection, getDocs} = window._fb;
+  const snap = await getDocs(collection(db, "solicitudes_tunim"));
+  todosVehiculos = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // ── CORRECCIÓN DE COSTOS (31 ago 2026) ──
+  // ANTES: releía TODOS los documentos de pasajeros/ por cada placa,
+  // cada vez que se abría el panel — causó 108.000 lecturas en un día
+  // y el aviso de límite excedido en Firebase Console.
+  // AHORA: lee 1 solo documento por placa (vehiculos/{placa}), donde
+  // el contador ya viene actualizado en tiempo real por index.html
+  // usando increment() en cada registro de pasajero.
+  await Promise.all(todosVehiculos.map(async (v)=>{
+    if(!v.placa) return;
+    try{
+      const snapVeh = await getDoc(doc(db,"vehiculos",v.placa));
+      if(snapVeh.exists()){
+        const dVeh = snapVeh.data();
+        v.totalPasajeros = dVeh.totalPasajeros || 0;
+        v.totalRecaudo   = dVeh.totalRecaudo   || 0;
+      }
+    }catch(e){ console.warn("Error leyendo contador de", v.placa, e); }
   }));
 
   const hoy = new Date();
@@ -732,10 +789,20 @@ function renderVehiculoCard(v, botones=""){
 function renderPendientes(lista){
   const cont = document.getElementById("lista-pendientes");
   if(!lista.length){ cont.innerHTML='<div class="empty-state">Sin solicitudes pendientes 🎉</div>'; return; }
-  cont.innerHTML = lista.map(v => renderVehiculoCard(v,
-    `<button class="btn-aprobar" onclick="aprobarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">✓ APROBAR</button>
-     <button class="btn-rechazar" onclick="rechazarVehiculo('${v.id}','${v.placa}')">✕ RECHAZAR</button>`
-  )).join("");
+  // Guardar temporalmente las solicitudes completas para que aprobarVehiculo()
+  // pueda acceder a los datos del conductor (si vinieron en el formulario).
+  window._solicitudesPendientesCache = window._solicitudesPendientesCache || {};
+  lista.forEach(v => { window._solicitudesPendientesCache[v.id] = v; });
+
+  cont.innerHTML = lista.map(v => {
+    const infoConductor = v.conductorNombres
+      ? `<div class="vc-info" style="color:var(--amarillo,#F5C800)">👤 Conductor: ${v.conductorNombres} (CC: ${v.conductorCedula||"—"})</div>`
+      : "";
+    return renderVehiculoCard(v,
+      `<button class="btn-aprobar" onclick="aprobarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">✓ APROBAR</button>
+       <button class="btn-rechazar" onclick="rechazarVehiculo('${v.id}','${v.placa}')">✕ RECHAZAR</button>`
+    ).replace('<div class="vc-empresa">', infoConductor + '<div class="vc-empresa">');
+  }).join("");
 }
 
 function renderActivos(lista){
@@ -797,8 +864,17 @@ function generarPIN(){
 }
 
 async function aprobarVehiculo(id, placa, correo, nombres){
-  if(!confirm("¿Aprobar el vehículo "+placa+" de "+nombres+"?\nSe activarán 30 días de prueba gratuita.")) return;
-  const {db, doc, updateDoc, setDoc, serverTimestamp} = window._fb;
+  // Recuperar la solicitud completa del caché — incluye datos del conductor si vinieron
+  const solicitud = (window._solicitudesPendientesCache||{})[id] || {};
+  const tieneConductor = !!(solicitud.conductorNombres && solicitud.conductorCedula);
+
+  const mensajeConfirm = tieneConductor
+    ? "¿Aprobar el vehículo "+placa+" de "+nombres+"?\n\nSe activarán 30 días de prueba gratuita.\nTambién se registrará como conductor a: "+solicitud.conductorNombres+" (CC: "+solicitud.conductorCedula+")"
+    : "¿Aprobar el vehículo "+placa+" de "+nombres+"?\nSe activarán 30 días de prueba gratuita.";
+
+  if(!confirm(mensajeConfirm)) return;
+
+  const {db, doc, updateDoc, setDoc, serverTimestamp, addDoc, collection} = window._fb;
   const venc = new Date(); venc.setDate(venc.getDate()+30);
 
   // Generar PIN único para el propietario
@@ -816,7 +892,7 @@ async function aprobarVehiculo(id, placa, correo, nombres){
   // Guardar también en vehiculos/{placa} para validación desde index.html
   await setDoc(doc(db,"vehiculos",placa),{
     placa,
-    orden:            "",
+    orden:            solicitud.orden||"",
     empresaId:        "autoboy",
     corridorId:       "funza-mosquera-bogota-soacha",
     estado:           "activo",
@@ -826,6 +902,42 @@ async function aprobarVehiculo(id, placa, correo, nombres){
     aprobadoPor:      "accesvial",
     actualizadoEn:    serverTimestamp()
   },{merge:true});
+
+  // ── ENFOQUE B: crear el conductor automáticamente, si vinieron sus datos ──
+  // Usa exactamente la misma estructura y función de hash que crearConductor(),
+  // así ambos caminos (manual y automático) quedan siempre consistentes.
+  if(tieneConductor){
+    try{
+      const cedula = solicitud.conductorCedula.trim();
+      const cedulaMask = cedula.slice(0,3)+"*".repeat(Math.max(0,cedula.length-5))+cedula.slice(-2);
+      const cedulaHash = await generarHashCedula(cedula);
+
+      await setDoc(doc(db,"conductores",cedulaHash),{
+        cedulaHash,
+        cedulaMask,
+        nombres:       solicitud.conductorNombres.trim(),
+        empresaId:     "autoboy",
+        tipo:          "titular", // ACCESVIAL puede reclasificarlo luego si es relevador
+        placaTitular:  placa,
+        placasAutorizadas: [placa],
+        metaDiaria:    700000,
+        estado:        "activo",
+        registradoPor: "accesvial-automatico-registro",
+        creadoEn:      serverTimestamp()
+      },{merge:true});
+
+      // Auditoría directa — reutiliza la colección auditoria_seguridad ya protegida
+      addDoc(collection(db,"auditoria_seguridad"),{
+        evento: "CONDUCTOR_AUTO_CREADO",
+        detalle: "Placa:"+placa+" CC-hash:"+cedulaHash,
+        ts: new Date().toISOString(),
+        registradoEn: serverTimestamp()
+      }).catch(()=>{});
+    }catch(e){
+      console.warn("Error creando conductor automático:", e);
+      // No se bloquea la aprobación del vehículo si esto falla
+    }
+  }
 
   // Notificar con PIN incluido
   const msgCorreo = [
