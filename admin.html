@@ -17,12 +17,13 @@
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>emailjs.init("CF4qcrUm2UKLzWy8");</script>
 
-<!-- Firebase -->
+<!-- Firebase — ahora con Authentication real (correo + contraseña) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
   import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, updateDoc, deleteDoc, serverTimestamp }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
-  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+    from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
@@ -38,14 +39,15 @@
   const auth = getAuth(app);
 
   window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, updateDoc, deleteDoc, serverTimestamp };
-  window._fbReady = false;
+  window._auth = { auth, signInWithEmailAndPassword, onAuthStateChanged, signOut };
+  window._fbReady = true; // Firestore listo — el login real ocurre por separado
+  window.dispatchEvent(new Event("fbReady"));
 
-  signInAnonymously(auth).then(() => {
-    window._fbReady = true;
-    window.dispatchEvent(new Event("fbReady"));
-  }).catch(() => {
-    window._fbReady = true;
-    window.dispatchEvent(new Event("fbReady"));
+  // ── Vigilar el estado de sesión en tiempo real ──
+  // Si alguien cierra sesión o el token expira, vuelve al login automáticamente.
+  onAuthStateChanged(auth, (user)=>{
+    window._adminUser = user; // null si no hay sesión activa
+    window.dispatchEvent(new Event("authStateChanged"));
   });
 </script>
 
@@ -176,15 +178,18 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 </head>
 <body>
 
-<!-- ══ LOGIN ADMIN ══ -->
+<!-- ══ LOGIN ADMIN — Firebase Authentication real (31 ago 2026) ══ -->
 <div class="login-admin" id="loginAdmin">
   <div class="login-box">
     <div class="login-logo">TU<span>NIM</span></div>
     <span class="login-sub">Panel Administrador · ACCESVIAL</span>
-    <input class="login-input" id="adminPin" type="password" placeholder="••••••" maxlength="10"
-      onkeydown="if(event.key==='Enter')verificarPin()">
-    <button class="login-btn" onclick="verificarPin()">INGRESAR</button>
-    <div class="login-error" id="loginError">PIN incorrecto</div>
+    <input class="login-input" id="adminEmail" type="email" placeholder="correo@ejemplo.com" autocomplete="username"
+      style="text-transform:none;letter-spacing:0.5px;font-family:'Inter',sans-serif"
+      onkeydown="if(event.key==='Enter')document.getElementById('adminPassword').focus()">
+    <input class="login-input" id="adminPassword" type="password" placeholder="Contraseña" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')iniciarSesionAdmin()">
+    <button class="login-btn" onclick="iniciarSesionAdmin()">INGRESAR</button>
+    <div class="login-error" id="loginError">Correo o contraseña incorrectos</div>
   </div>
 </div>
 
@@ -429,36 +434,65 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 <div class="toast" id="toast"></div>
 
 <script>
-// ══ PIN ADMIN ══
-// PIN cargado desde Firestore — no en código fuente
-let ADMIN_PIN_HASH = "";
-async function cargarAdminPin(){
-  try{
-    if(!window._fb) return;
-    const {db, doc, getDoc} = window._fb;
-    const snap = await getDoc(doc(db,"config_admin","acceso"));
-    if(snap.exists()) ADMIN_PIN_HASH = snap.data().pinHash||"";
-  }catch(e){ console.warn("Pin admin:", e); }
-}
+// ══ LOGIN ADMIN — Firebase Authentication real (31 ago 2026) ══
+// El sistema de PIN casero fue reemplazado por completo. Ahora se usa
+// signInWithEmailAndPassword de Firebase — la misma infraestructura de
+// autenticación que usa Google para sus propios productos: protección
+// contra fuerza bruta, límites de intentos, y recuperación de cuenta
+// seguras, todo manejado por Firebase, no por código propio.
 
-function verificarPin(){
-  const pin = document.getElementById("adminPin").value;
-  // Verificar PIN — sincrono para MVP
-  const okPin = (pin === "tunim2026" || ADMIN_PIN_HASH === "" || pin.length >= 6);
-  if(okPin){
-    document.getElementById("loginAdmin").style.display = "none";
-    document.getElementById("appAdmin").style.display = "block";
-    cargarTodo();
-  } else {
-    document.getElementById("loginError").style.display = "block";
-    setTimeout(()=>document.getElementById("loginError").style.display="none", 2000);
+async function iniciarSesionAdmin(){
+  const email = document.getElementById("adminEmail").value.trim();
+  const password = document.getElementById("adminPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.style.display = "none";
+
+  if(!email || !password){
+    errEl.textContent = "Ingresa correo y contraseña";
+    errEl.style.display = "block";
+    return;
+  }
+
+  try{
+    const { auth, signInWithEmailAndPassword } = window._auth;
+    await signInWithEmailAndPassword(auth, email, password);
+    // onAuthStateChanged (ver bloque module arriba) detecta el login
+    // real y dispara mostrarAppAdmin() automáticamente.
+  }catch(e){
+    console.warn("Login admin:", e.code);
+    errEl.textContent = "Correo o contraseña incorrectos";
+    errEl.style.display = "block";
   }
 }
 
-function cerrarSesion(){
+function mostrarAppAdmin(){
+  document.getElementById("loginAdmin").style.display = "none";
+  document.getElementById("appAdmin").style.display = "block";
+  cargarTodo();
+}
+
+function mostrarLoginAdmin(){
   document.getElementById("loginAdmin").style.display = "flex";
   document.getElementById("appAdmin").style.display = "none";
-  document.getElementById("adminPin").value = "";
+  document.getElementById("adminEmail").value = "";
+  document.getElementById("adminPassword").value = "";
+}
+
+// Reacciona a cambios reales de sesión — login, logout, o token expirado
+window.addEventListener("authStateChanged", ()=>{
+  if(window._adminUser){
+    mostrarAppAdmin();
+  } else {
+    mostrarLoginAdmin();
+  }
+});
+
+async function cerrarSesion(){
+  try{
+    const { auth, signOut } = window._auth;
+    await signOut(auth);
+  }catch(e){ console.warn("Error cerrando sesión:", e); }
+  mostrarLoginAdmin();
 }
 
 // ══ TABS ══
@@ -1005,11 +1039,10 @@ function toast(msg,tipo=""){
 }
 
 // Enter en PIN
-document.getElementById("adminPin").addEventListener("keydown",e=>{if(e.key==="Enter")verificarPin();});
+// (listener de adminPin eliminado — reemplazado por Firebase Auth)
 
 // Alertas automáticas de vencimiento (verificar cada vez que carga)
 window.addEventListener("fbReady",()=>{
-  cargarAdminPin();
   setTimeout(async()=>{
     const {db,collection,getDocs,query,where} = window._fb;
     const snap = await getDocs(collection(db,"solicitudes_tunim"));
