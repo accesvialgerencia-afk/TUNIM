@@ -2879,11 +2879,42 @@ function enviarReportePorCorreo(){
     hablar("Reporte del dia enviado correctamente.",0.9,1.1);
   }).catch((err)=>{
     console.warn("EmailJS error:",err);
-    const asunto=encodeURIComponent("TUNIM Reporte "+hoy+" - "+placa);
-    const body=encodeURIComponent(reporte);
-    window.open("mailto:accesvialgerencia@gmail.com?subject="+asunto+"&body="+body,"_blank");
-    mostrarToast("Abriendo correo manualmente...","warn");
+    // ── CORRECCIÓN: ya no se usa mailto: (falla en tablets sin app de
+    // correo configurada — confirmado el 31 ago). En su lugar, se
+    // muestra el reporte completo en pantalla con un botón de copiar,
+    // que funciona en cualquier dispositivo sin depender de apps. ──
+    mostrarModalReporteManual(reporte, hoy, placa);
+    mostrarToast("⚠ No se pudo enviar automático — reporte disponible para copiar","warn");
   });
+}
+
+// ── Modal de respaldo: reporte visible + copiar, sin depender de apps ──
+function mostrarModalReporteManual(reporte, fecha, placa){
+  const overlay = document.createElement("div");
+  overlay.id = "overlayReporteManual";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+  overlay.innerHTML = `
+    <div style="background:var(--surface,#0D1117);border:1px solid var(--border,#1C2733);border-radius:16px;padding:20px;max-width:420px;width:100%;max-height:85vh;display:flex;flex-direction:column">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:2px;color:var(--amarillo,#F5C800);margin-bottom:6px">📋 Reporte del día — ${placa}</div>
+      <div style="font-size:0.72rem;color:var(--muted,#5A6A7A);margin-bottom:12px">No se pudo enviar automáticamente. Copia el reporte y compártelo por WhatsApp o donde prefieras.</div>
+      <textarea id="textoReporteManual" readonly style="flex:1;min-height:220px;background:var(--surface2,#131920);color:var(--text,#E8EDF2);border:1px solid var(--border2,#243040);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;white-space:pre-wrap;resize:none;margin-bottom:12px">${reporte}</textarea>
+      <button onclick="copiarReporteManual()" style="width:100%;padding:12px;background:var(--amarillo,#F5C800);border:none;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;color:#000;cursor:pointer;margin-bottom:8px">📋 COPIAR REPORTE</button>
+      <button onclick="document.getElementById('overlayReporteManual').remove()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border2,#243040);border-radius:8px;color:var(--muted,#5A6A7A);cursor:pointer">Cerrar</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function copiarReporteManual(){
+  const texto = document.getElementById("textoReporteManual");
+  texto.select();
+  texto.setSelectionRange(0, 999999); // compatibilidad móvil
+  try{
+    document.execCommand("copy");
+    mostrarToast("✅ Reporte copiado — pégalo en WhatsApp o donde prefieras","");
+  }catch(e){
+    mostrarToast("Selecciona el texto manualmente y cópialo","warn");
+  }
 }
 
 // ══ REGISTRAR PASAJERO ══
