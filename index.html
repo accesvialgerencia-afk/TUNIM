@@ -29,7 +29,7 @@
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp }
+  import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, increment }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
   import { getAuth, signInAnonymously, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
@@ -52,7 +52,7 @@
   // enableIndexedDbPersistence está deprecado en v11
 
   // Exponer globalmente para usar desde el script principal
-  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, auth };
+  window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, increment, auth };
   window._fbReady = false;
 
   // Login anónimo automático — funciona con el sistema de nombre+orden / orden+PIN de TUNIM
@@ -469,6 +469,8 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
     <label class="modal-label">Hora de inicio</label>
     <input class="modal-input" id="inputHoraInicio" type="time" autocomplete="off">
+    <!-- Botón opcional — solo visible si hay datos previos en ESTE dispositivo -->
+    <button id="btnUsarDatosAnteriores" onclick="usarDatosAnteriores()" style="display:none;width:100%;padding:8px;margin-bottom:8px;background:transparent;border:1px dashed var(--border2,#243040);border-radius:8px;color:var(--muted,#5A6779);font-size:0.72rem;cursor:pointer">↺ Usar mis últimos datos</button>
     <!-- Estado de validación -->
     <div id="modalEstado" style="display:none;padding:8px 12px;border-radius:8px;font-size:0.72rem;margin-top:4px;font-weight:600"></div>
     <button class="modal-btn" onclick="guardarConfigTurno()">▶ INICIAR TURNO</button>
@@ -958,10 +960,23 @@ async function validarYCargarTurno(placa, cedula){
       auditLog("CONDUCTOR_INACTIVO","CC-hash:"+cedulaHashBusqueda,"security");
       return {ok:false};
     }
-    if(cond.empresaId !== veh.empresaId){
+
+    // ── ROL DE ADMINISTRADOR (30 ago 2026) ──
+    // Pasa por la MISMA validación de hash y estado que cualquier
+    // conductor. Único permiso ampliado: puede operar vehículos de
+    // CUALQUIER empresa, no solo la suya — necesario para supervisión
+    // real de ACCESVIAL. Se audita con nivel "security" por ser un
+    // acceso de alcance elevado, distinto del flujo normal.
+    const esAdmin = cond.rolSistema === "accesvial";
+
+    if(!esAdmin && cond.empresaId !== veh.empresaId){
       mostrarEst("❌ Conductor no autorizado para esta empresa","err");
       auditLog("CONDUCTOR_EMPRESA_INVALIDA","CC-hash:"+cedulaHashBusqueda+" Empresa:"+veh.empresaId,"security");
       return {ok:false};
+    }
+
+    if(esAdmin){
+      auditLog("ACCESO_ADMIN","CC-hash:"+cedulaHashBusqueda+" opera placa:"+placa+" empresa:"+veh.empresaId,"security");
     }
 
     // PASO 4 — Cargar empresa y corredor
@@ -1009,7 +1024,8 @@ async function validarYCargarTurno(placa, cedula){
       empresaNombre,
       corredor:  corridorId,
       planTunim: veh.planTunim||"basico",
-      placaReal: placaReal
+      placaReal: placaReal,
+      esAdmin:   esAdmin
     };
 
   }catch(e){
@@ -2057,18 +2073,43 @@ function actualizarBarraVehiculo(){
   document.getElementById("vbarHora").textContent=configTurno.horaInicio||"—";
 }
 
-// Mostrar modal si no hay config, si no ir directo
+// ── SEGURIDAD (30 ago 2026): el modal SIEMPRE aparece al abrir ──
+// Antes, si ya existía un turno guardado, la app entraba directo sin
+// volver a validar identidad — como dejar la puerta abierta a quien
+// tome el dispositivo. Ahora, igual que iniciar sesión en cualquier
+// app seria, siempre se pide placa + cédula. Los datos guardados solo
+// PRELLENAN los campos para que sea rápido volver a confirmar —
+// nunca se usan para saltarse la validación.
 window.addEventListener("load",()=>{
   const hoy=new Date().toISOString().slice(0,10);
   document.getElementById("inputFecha").value=hoy;
   document.getElementById("inputHoraInicio").value=new Date().toTimeString().slice(0,5);
-  if(!configTurno.placa){
-    document.getElementById("modalConfig").style.display="flex";
-  }else{
-    document.getElementById("modalConfig").style.display="none";
-    actualizarBarraVehiculo();
-  }
+
+  // ── SEGURIDAD (30 ago 2026): los campos SIEMPRE inician vacíos ──
+  // No se prellenan automáticamente, ni siquiera en el propio dispositivo.
+  // Así, si alguien recibe el enlace compartido, jamás ve datos ajenos.
+  // Quien quiera recuperar sus propios datos debe tocar el botón
+  // "Usar mis últimos datos" de forma explícita y visible.
+  document.getElementById("inputPlaca").value = "";
+  document.getElementById("inputCedula").value = "";
+  document.getElementById("inputNombreConductor").value = "";
+
+  // Mostrar el botón de recuperación solo si hay algo que recuperar
+  const btnRecuperar = document.getElementById("btnUsarDatosAnteriores");
+  if(btnRecuperar) btnRecuperar.style.display = configTurno.placa ? "block" : "none";
+
+  // El modal SIEMPRE se muestra — sin excepción
+  document.getElementById("modalConfig").style.display="flex";
 });
+
+// Recuperación EXPLÍCITA de datos — solo si la persona lo pide a propósito
+function usarDatosAnteriores(){
+  if(configTurno.placa)  document.getElementById("inputPlaca").value = configTurno.placa;
+  if(configTurno.cedula) document.getElementById("inputCedula").value = configTurno.cedula;
+  if(configTurno.nombreConductor) document.getElementById("inputNombreConductor").value = configTurno.nombreConductor;
+  const btn = document.getElementById("btnUsarDatosAnteriores");
+  if(btn) btn.style.display = "none";
+}
 
 // ══ FIREBASE — SYNC ══
 let fbListo=false;
@@ -2131,7 +2172,7 @@ async function sincronizarConfigFirebase(){
 async function guardarPasajeroFirebase(reg){
   if(!fbListo||!window._fb||!configTurno.placa) return;
   try{
-    const {db,collection,addDoc,serverTimestamp}=window._fb;
+    const {db,doc,collection,addDoc,setDoc,serverTimestamp,increment}=window._fb;
     await addDoc(collection(db,"pasajeros"),{
       placa: configTurno.placa,
       fechaInicio: configTurno.fechaInicio,
@@ -2143,6 +2184,17 @@ async function guardarPasajeroFirebase(reg){
       numPasajero: reg.num,
       registradoEn: serverTimestamp()
     });
+
+    // ── CORRECCIÓN DE COSTOS (31 ago 2026) ──
+    // Mantener un contador en tiempo real en vehiculos/{placa}, en vez
+    // de que admin.html tenga que releer TODOS los pasajeros cada vez
+    // que quiere mostrar el total. Esto evita miles de lecturas
+    // innecesarias — ver aviso de límite excedido en Firebase Console.
+    setDoc(doc(db,"vehiculos",configTurno.placa),{
+      totalPasajeros: increment(1),
+      totalRecaudo:   increment(reg.precio||0)
+    },{merge:true}).catch(()=>{});
+
     setSyncStatus("ok");
   }catch(e){
     setSyncStatus("pending");
@@ -2244,6 +2296,8 @@ function cargarEstado(){
 function guardarEstado(){
   estado.viajeActual=viajeActual;
   estado.diaActual=diaKey();
+  // ── Seguridad: registrar última actividad para expiración de sesión ──
+  estado.ultimaActividadMs = Date.now();
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(estado));}catch(e){}
 }
 
