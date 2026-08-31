@@ -214,6 +214,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <button class="atab" onclick="aTab('empresas',this)">🏢 Empresas</button>
     <button class="atab" onclick="aTab('tarifas',this)">💰 Tarifas</button>
     <button class="atab" onclick="aTab('conductores',this)">👤 Conductores</button>
+    <button class="atab" onclick="aTab('seguridad',this)">🔒 Seguridad</button>
   </div>
 
   <!-- DASHBOARD -->
@@ -362,6 +363,19 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
   </div>
 
   <!-- ═══ CONDUCTORES ═══ -->
+  <!-- ══ FASE B — SEGURIDAD: registro de accesos al panel ══ -->
+  <div class="apage" id="page-seguridad">
+    <div class="acard">
+      <div class="acard-head">
+        <span class="acard-title">Accesos recientes al panel de administración</span>
+        <button class="btn-aprobar" style="padding:4px 12px;font-size:0.65rem" onclick="cargarAccesosSeguridad()">↻ Actualizar</button>
+      </div>
+      <div class="acard-body" id="lista-accesos-seguridad" style="padding:14px">
+        <div style="text-align:center;color:var(--muted);font-size:0.75rem;padding:20px">Cargando...</div>
+      </div>
+    </div>
+  </div>
+
   <div class="apage" id="page-conductores">
 
     <div class="acard">
@@ -458,11 +472,28 @@ async function iniciarSesionAdmin(){
     await signInWithEmailAndPassword(auth, email, password);
     // onAuthStateChanged (ver bloque module arriba) detecta el login
     // real y dispara mostrarAppAdmin() automáticamente.
+    registrarAccesoAdmin(email, "exitoso");
   }catch(e){
     console.warn("Login admin:", e.code);
     errEl.textContent = "Correo o contraseña incorrectos";
     errEl.style.display = "block";
+    registrarAccesoAdmin(email, "fallido");
   }
+}
+
+// ── Auditoría de accesos — Fase B de seguridad ──
+async function registrarAccesoAdmin(email, resultado){
+  try{
+    const {db, collection, addDoc, serverTimestamp} = window._fb;
+    await addDoc(collection(db,"auditoria_seguridad"),{
+      evento: "ACCESO_ADMIN_PANEL",
+      email: email || "(vacío)",
+      resultado: resultado, // "exitoso" | "fallido"
+      ua: navigator.userAgent.slice(0,120),
+      ts: new Date().toISOString(),
+      registradoEn: serverTimestamp()
+    });
+  }catch(e){ console.warn("Error registrando acceso:", e); }
 }
 
 function mostrarAppAdmin(){
@@ -501,15 +532,53 @@ function aTab(name, btn){
   document.querySelectorAll(".atab").forEach(b=>b.classList.remove("active"));
   document.getElementById("page-"+name).classList.add("active");
   btn.classList.add("active");
+  if(name === "seguridad") cargarAccesosSeguridad();
 }
 
 // ══ CARGAR TODO ══
-async function hashAdminPin(pin){
+// ── FASE B: cargar y mostrar el registro de accesos al panel ──
+async function cargarAccesosSeguridad(){
+  const cont = document.getElementById("lista-accesos-seguridad");
+  cont.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:0.75rem;padding:20px">Cargando...</div>';
   try{
-    const enc = new TextEncoder();
-    const buf = await crypto.subtle.digest("SHA-256", enc.encode(pin+"TUNIM-ADMIN-SALT"));
-    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,32);
-  }catch(e){ return pin; }
+    const {db, collection, query, where, orderBy, getDocs} = window._fb;
+    const q = query(
+      collection(db,"auditoria_seguridad"),
+      where("evento","==","ACCESO_ADMIN_PANEL"),
+      orderBy("registradoEn","desc")
+    );
+    const snap = await getDocs(q);
+
+    if(snap.empty){
+      cont.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:0.75rem;padding:20px">Sin registros de acceso todavía</div>';
+      return;
+    }
+
+    let html = "";
+    snap.forEach(d=>{
+      const a = d.data();
+      const fecha = a.ts ? new Date(a.ts).toLocaleString("es-CO",{dateStyle:"medium",timeStyle:"short"}) : "—";
+      const colorResultado = a.resultado === "exitoso" ? "var(--verde,#00C47A)" : "var(--rojo,#E8354F)";
+      const icono = a.resultado === "exitoso" ? "✅" : "❌";
+      html += `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border,#1C2733)">
+          <div>
+            <div style="font-size:0.8rem;font-weight:600">${icono} ${a.email||"(desconocido)"}</div>
+            <div style="font-size:0.65rem;color:var(--muted,#5A6A7A);margin-top:2px">${fecha}</div>
+          </div>
+          <div style="font-size:0.7rem;font-weight:700;color:${colorResultado}">${(a.resultado||"").toUpperCase()}</div>
+        </div>
+      `;
+    });
+    cont.innerHTML = html;
+  }catch(e){
+    console.warn("Error cargando accesos:", e);
+    if(e.message && e.message.includes("index")){
+      cont.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:0.72rem;padding:20px">Firestore necesita un índice para esta consulta.<br>Revisa la consola (F12) — ahí aparece un enlace para crearlo en 1 clic.</div>';
+    } else {
+      cont.innerHTML = '<div style="text-align:center;color:var(--rojo,#E8354F);font-size:0.75rem;padding:20px">Error cargando el registro de accesos</div>';
+    }
+  }
 }
 
 function cargarTodo(){
