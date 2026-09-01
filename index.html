@@ -1944,12 +1944,14 @@ function cargarConfig(){
 }
 
 // ── CORRECCIÓN CRÍTICA DE SEGURIDAD (31 ago 2026) ──
-// Bandera COMPARTIDA entre guardarConfigTurno() (botón) y
-// watchdogModal() (temporizador automático). Evita la condición de
-// carrera confirmada por video: varios toques rápidos del botón
-// disparaban validaciones en paralelo contra Firestore, y la última
-// en resolver "ganaba" sin importar su resultado real — permitiendo
-// que una placa inexistente (WDR-678) terminara autorizada.
+// Bandera que evita clics repetidos en "Iniciar turno" mientras una
+// validación sigue en curso. Nace de una condición de carrera
+// confirmada por video: varios toques rápidos del botón disparaban
+// validaciones en paralelo contra Firestore, y la última en resolver
+// "ganaba" sin importar su resultado real — permitiendo que una placa
+// inexistente (WDR-678) terminara autorizada.
+// (El watchdogModal() que también la usaba fue eliminado — ver nota
+// más abajo, sección "WATCHDOG ELIMINADO".)
 let validacionEnCurso = false;
 
 async function guardarConfigTurno(){
@@ -3407,72 +3409,21 @@ async function recuperarTurnoActivo(){
   }
 }
 
-// ══ WATCHDOG 3AM — Nunca dejar al conductor sin TUNIM ══
-// Si el modal de inicio queda abierto con datos válidos por 30s
-// sin cerrarse, fuerza el inicio en modo local automáticamente.
-let watchdogEjecutandose = false; // evita disparos duplicados mientras valida
-
-async function watchdogModal(){
-  const modal = document.getElementById("modalConfig");
-  if(!modal || modal.style.display === "none") return;
-  // ── Respeta la bandera COMPARTIDA con el botón (31 ago 2026) ──
-  // Si el conductor ya tocó "Iniciar turno" y esa validación está en
-  // curso, el watchdog debe esperar — nunca correr en paralelo con ella.
-  if(watchdogEjecutandose || validacionEnCurso) return;
-
-  const placaEl = document.getElementById("inputPlaca");
-  const cedulaEl = document.getElementById("inputCedula");
-  const rawIdent = placaEl ? placaEl.value.trim() : "";
-  const esSoloNumerosW = /^[0-9]+$/.test(rawIdent);
-  const identificador = esSoloNumerosW ? rawIdent.slice(0,10) : SANITIZE.placa(rawIdent);
-  const cedula = cedulaEl ? SANITIZE.cedula(cedulaEl.value) : "";
-
-  if(identificador.length < 3 || cedula.length < 6) return; // nada que validar aún
-
-  watchdogEjecutandose = true;
-  validacionEnCurso = true; // bloquea también al botón mientras el watchdog valida
-  try{
-    console.warn("WATCHDOG: modal lleva 30s+ abierto — intentando validación real");
-    auditLog("WATCHDOG_ACTIVADO","Intentando validar:"+identificador,"warn");
-
-    // ── El watchdog AHORA valida contra Firestore, igual que el flujo
-    // normal — nunca fuerza el acceso sin haber intentado verificar. ──
-    const resultado = await validarYCargarTurno(identificador, cedula);
-
-    if(!resultado.ok){
-      // Placa/cédula inválidas confirmadas — NO forzar nada, solo esperar
-      console.warn("WATCHDOG: validación real dice NO autorizado — no se fuerza el acceso");
-      return;
-    }
-
-    // Solo llega aquí si: (a) es válido de verdad, o (b) es un caso
-    // legítimo de "sin conexión" ya evaluado dentro de validarYCargarTurno
-    const placa = resultado.placaReal || identificador;
-    const fecha = document.getElementById("inputFecha")?.value || new Date().toISOString().slice(0,10);
-    const hora  = document.getElementById("inputHoraInicio")?.value || "--:--";
-    const idTurno = generarIdTurno(placa, cedula, fecha);
-    configTurno = {
-      idTurno, placa, cedula, nombreConductor:"",
-      fechaInicio:fecha, horaInicio:hora,
-      estadoTurno:"Activo",
-      empresa:resultado.empresaNombre||"Autoboy",
-      empresaId:resultado.empresa||"autoboy",
-      corredor:resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
-      planTunim:resultado.planTunim||"basico",
-      modoAcceso:"watchdog-"+(resultado.modo||"local"),
-      viajesCompletados:0
-    };
-    try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
-    modal.style.display="none";
-    renderDestinos(); actualizarUI(); actualizarBarraVehiculo(); setViaje(1);
-    mostrarToast("⚡ Turno iniciado (recuperación automática)","");
-    auditLog("WATCHDOG_EXITOSO","Placa:"+placa+" modo:"+resultado.modo,"info");
-  }finally{
-    watchdogEjecutandose = false;
-    validacionEnCurso = false;
-  }
-}
-setInterval(watchdogModal, 30000);
+// ══ WATCHDOG ELIMINADO (31 ago 2026) ══
+// Se retiró por completo como prueba de aislamiento: se reportó que,
+// tras el bloqueo correcto de una placa inválida, la zona de tarifas
+// se abría sola 2-3 segundos después sin intervención del conductor.
+// El watchdog era el único mecanismo automático (sin clic del usuario)
+// capaz de cerrar el modal y mostrar las tarifas, por lo que se
+// elimina para confirmar si esto resuelve el comportamiento reportado.
+//
+// El conductor sigue pudiendo iniciar turno en cualquier momento
+// tocando el botón manual — eso nunca dependió del watchdog.
+//
+// Si se necesita un mecanismo de recuperación en el futuro, debe
+// diseñarse para NUNCA actuar sin que el conductor lo confirme
+// explícitamente (ej. un botón visible "Reintentar", no un timer
+// silencioso de fondo).
 
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
