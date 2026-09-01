@@ -55,16 +55,31 @@
   window._fb = { db, doc, setDoc, getDoc, collection, addDoc, query, where, orderBy, getDocs, serverTimestamp, increment, auth };
   window._fbReady = false;
 
-  // Login anónimo automático — funciona con el sistema de nombre+orden / orden+PIN de TUNIM
-  signInAnonymously(auth).then(() => {
-    console.log("✅ Firebase Auth OK");
-    window._fbReady = true;
-    window.dispatchEvent(new Event("fbReady"));
-  }).catch((e) => {
-    console.warn("Firebase Auth error:", e);
-    window._fbReady = true; // continuar en modo local si falla
-    window.dispatchEvent(new Event("fbReady"));
-  });
+  // ── RESILIENTE, SIN MODO LOCAL (31 ago 2026) ──
+  // El login anónimo se reintenta activamente varias veces si falla,
+  // en vez de rendirse en el primer intento (fallas temporales de red
+  // ocurren incluso en wifi estable). Solo tras agotar los reintentos
+  // reales se considera "sin conexión" — nunca se simula un falso
+  // "listo" que dejaría pasar sin autenticación real.
+  window._intentarLoginFirebase = function(intento){
+    intento = intento || 1;
+    signInAnonymously(auth).then(() => {
+      console.log("✅ Firebase Auth OK (intento "+intento+")");
+      window._fbReady = true;
+      window.dispatchEvent(new Event("fbReady"));
+    }).catch((e) => {
+      console.warn("Firebase Auth error (intento "+intento+"):", e);
+      if(intento < 3){
+        // Reintentar con espera creciente: 1s, 2s, 3s
+        setTimeout(()=>window._intentarLoginFirebase(intento+1), intento*1000);
+      } else {
+        console.warn("Firebase Auth: agotados los reintentos — bloqueo real, sin modo local");
+        // NO se marca _fbReady = true — el sistema debe saber que
+        // realmente no hay autenticación válida tras insistir.
+      }
+    });
+  };
+  window._intentarLoginFirebase();
 </script>
 
 <style>
@@ -473,7 +488,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <button id="btnUsarDatosAnteriores" onclick="usarDatosAnteriores()" style="display:none;width:100%;padding:8px;margin-bottom:8px;background:transparent;border:1px dashed var(--border2,#243040);border-radius:8px;color:var(--muted,#5A6779);font-size:0.72rem;cursor:pointer">↺ Usar mis últimos datos</button>
     <!-- Estado de validación -->
     <div id="modalEstado" style="display:none;padding:8px 12px;border-radius:8px;font-size:0.72rem;margin-top:4px;font-weight:600"></div>
-    <button class="modal-btn" onclick="guardarConfigTurno()">▶ INICIAR TURNO</button>
+    <button class="modal-btn" id="btnIniciarTurno" onclick="guardarConfigTurno()">▶ INICIAR TURNO</button>
   </div>
 </div>
 
@@ -875,9 +890,20 @@ async function validarYCargarTurno(placa, cedula){
     est.textContent = msg;
   };
 
+  // ── CORRECCIÓN CRÍTICA (31 ago): esperar de verdad antes de asumir
+  // que no hay conexión. Antes, si Firebase no estaba listo en ese
+  // instante exacto, se activaba "modo local" y dejaba pasar CUALQUIER
+  // dato sin validar — hueco de seguridad real confirmado en pruebas. ──
   if(!window._fbReady||!window._fb){
-    mostrarEst("⚡ Sin conexión — modo local activado","warn");
-    return {ok:true, modo:"local", empresa:"Autoboy", corredor:"Funza-Mosquera-Bogotá-Soacha"};
+    mostrarEst("🔄 Conectando — verificando tu conexión...","warn");
+    const listo = await esperarFirebase(12000); // 12s — da margen real a los 3 reintentos de autenticación
+    if(!listo || !window._fb){
+      // ── SIN MODO LOCAL (31 ago 2026): se requiere conexión real para
+      // validar placa y cédula. Sin excepción, sin importar la hora. ──
+      mostrarEst("❌ Sin conexión a internet — verifica tu señal e intenta de nuevo","err");
+      auditLog("BLOQUEADO_SIN_CONEXION","Placa/Orden:"+placa,"security");
+      return {ok:false};
+    }
   }
 
   try{
@@ -1030,9 +1056,11 @@ async function validarYCargarTurno(placa, cedula){
 
   }catch(e){
     console.warn("Error validando turno:", e);
-    // R9 — Falla Firebase: continuar en modo local
-    mostrarEst("⚡ Error de conexión — modo local","warn");
-    return {ok:true, modo:"local", empresa:"Autoboy", corredor:"funza-mosquera-bogota-soacha", empresaNombre:"Autoboy"};
+    // ── SIN MODO LOCAL (31 ago 2026): un error a mitad de la validación
+    // ya NO permite continuar. Se bloquea y se pide reintentar. ──
+    mostrarEst("❌ Error verificando datos — intenta de nuevo","err");
+    auditLog("BLOQUEADO_ERROR_VALIDACION","Placa/Orden:"+placa+" Error:"+(e.message||"desconocido"),"security");
+    return {ok:false};
   }
 }
 
@@ -1915,7 +1943,32 @@ function cargarConfig(){
   return {placa:"", fechaInicio:"", horaInicio:""};
 }
 
+// ── CORRECCIÓN CRÍTICA DE SEGURIDAD (31 ago 2026) ──
+// Bandera COMPARTIDA entre guardarConfigTurno() (botón) y
+// watchdogModal() (temporizador automático). Evita la condición de
+// carrera confirmada por video: varios toques rápidos del botón
+// disparaban validaciones en paralelo contra Firestore, y la última
+// en resolver "ganaba" sin importar su resultado real — permitiendo
+// que una placa inexistente (WDR-678) terminara autorizada.
+let validacionEnCurso = false;
+
 async function guardarConfigTurno(){
+  // ── Bloqueo contra clics repetidos / validaciones paralelas ──
+  if(validacionEnCurso) return;
+  validacionEnCurso = true;
+  const btnIniciar = document.getElementById("btnIniciarTurno");
+  const textoOriginalBtn = btnIniciar ? btnIniciar.textContent : "";
+  if(btnIniciar){ btnIniciar.disabled = true; btnIniciar.textContent = "🔄 Verificando..."; }
+
+  try{
+    await _guardarConfigTurnoInterno();
+  } finally {
+    validacionEnCurso = false;
+    if(btnIniciar){ btnIniciar.disabled = false; btnIniciar.textContent = textoOriginalBtn || "▶ INICIAR TURNO"; }
+  }
+}
+
+async function _guardarConfigTurnoInterno(){
   // P0-04: Sanitizar inputs
   // ── Acepta PLACA (ej. TAL-866) o NÚMERO DE ORDEN (ej. 042) ──
   const inputIdent = document.getElementById("inputPlaca").value;
@@ -2008,7 +2061,7 @@ function esperarFirebase(timeout=8000){
 async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
   mostrarToast("🔄 Conectando con la nube...","");
   // Esperar Firebase hasta 8 segundos
-  const listo = await esperarFirebase(8000);
+  const listo = await esperarFirebase(12000); // 12s — da margen real a los 3 reintentos de autenticación
   if(!listo || !window._fb){
     mostrarToast("⚡ Sin conexión — turno local","warn");
     return;
@@ -3357,32 +3410,66 @@ async function recuperarTurnoActivo(){
 // ══ WATCHDOG 3AM — Nunca dejar al conductor sin TUNIM ══
 // Si el modal de inicio queda abierto con datos válidos por 30s
 // sin cerrarse, fuerza el inicio en modo local automáticamente.
-function watchdogModal(){
+let watchdogEjecutandose = false; // evita disparos duplicados mientras valida
+
+async function watchdogModal(){
   const modal = document.getElementById("modalConfig");
   if(!modal || modal.style.display === "none") return;
+  // ── Respeta la bandera COMPARTIDA con el botón (31 ago 2026) ──
+  // Si el conductor ya tocó "Iniciar turno" y esa validación está en
+  // curso, el watchdog debe esperar — nunca correr en paralelo con ella.
+  if(watchdogEjecutandose || validacionEnCurso) return;
+
   const placaEl = document.getElementById("inputPlaca");
   const cedulaEl = document.getElementById("inputCedula");
   const rawIdent = placaEl ? placaEl.value.trim() : "";
   const esSoloNumerosW = /^[0-9]+$/.test(rawIdent);
-  const placa = esSoloNumerosW ? rawIdent.slice(0,10) : SANITIZE.placa(rawIdent);
+  const identificador = esSoloNumerosW ? rawIdent.slice(0,10) : SANITIZE.placa(rawIdent);
   const cedula = cedulaEl ? SANITIZE.cedula(cedulaEl.value) : "";
-  if(placa.length >= 3 && cedula.length >= 6){
-    console.warn("WATCHDOG: modal atascado — forzando inicio local");
-    auditLog("WATCHDOG_MODAL","Inicio forzado tras 30s","warn");
+
+  if(identificador.length < 3 || cedula.length < 6) return; // nada que validar aún
+
+  watchdogEjecutandose = true;
+  validacionEnCurso = true; // bloquea también al botón mientras el watchdog valida
+  try{
+    console.warn("WATCHDOG: modal lleva 30s+ abierto — intentando validación real");
+    auditLog("WATCHDOG_ACTIVADO","Intentando validar:"+identificador,"warn");
+
+    // ── El watchdog AHORA valida contra Firestore, igual que el flujo
+    // normal — nunca fuerza el acceso sin haber intentado verificar. ──
+    const resultado = await validarYCargarTurno(identificador, cedula);
+
+    if(!resultado.ok){
+      // Placa/cédula inválidas confirmadas — NO forzar nada, solo esperar
+      console.warn("WATCHDOG: validación real dice NO autorizado — no se fuerza el acceso");
+      return;
+    }
+
+    // Solo llega aquí si: (a) es válido de verdad, o (b) es un caso
+    // legítimo de "sin conexión" ya evaluado dentro de validarYCargarTurno
+    const placa = resultado.placaReal || identificador;
     const fecha = document.getElementById("inputFecha")?.value || new Date().toISOString().slice(0,10);
     const hora  = document.getElementById("inputHoraInicio")?.value || "--:--";
     const idTurno = generarIdTurno(placa, cedula, fecha);
     configTurno = {
       idTurno, placa, cedula, nombreConductor:"",
       fechaInicio:fecha, horaInicio:hora,
-      estadoTurno:"Activo", empresa:"Autoboy", empresaId:"autoboy",
-      corredor:"Funza-Mosquera-Bogotá-Soacha", planTunim:"basico",
-      modoAcceso:"watchdog", viajesCompletados:0
+      estadoTurno:"Activo",
+      empresa:resultado.empresaNombre||"Autoboy",
+      empresaId:resultado.empresa||"autoboy",
+      corredor:resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
+      planTunim:resultado.planTunim||"basico",
+      modoAcceso:"watchdog-"+(resultado.modo||"local"),
+      viajesCompletados:0
     };
     try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
     modal.style.display="none";
     renderDestinos(); actualizarUI(); actualizarBarraVehiculo(); setViaje(1);
-    mostrarToast("⚡ Inicio de emergencia activado","");
+    mostrarToast("⚡ Turno iniciado (recuperación automática)","");
+    auditLog("WATCHDOG_EXITOSO","Placa:"+placa+" modo:"+resultado.modo,"info");
+  }finally{
+    watchdogEjecutandose = false;
+    validacionEnCurso = false;
   }
 }
 setInterval(watchdogModal, 30000);
