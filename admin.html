@@ -1122,6 +1122,13 @@ async function crearConductor(){
     .map(p=>p.trim().toUpperCase())
     .filter(p=>p.length >= 5);
 
+  // ── SPRINT 3 (1 sep 2026) — PIN de conductor ──
+  // Mismo patrón exacto que pinPropietario: 4 dígitos numéricos,
+  // generado automáticamente al registrar. Protege la consulta de
+  // productividad — sin esto, cualquiera que conozca la cédula del
+  // conductor (dato no secreto) podría ver sus ingresos.
+  const pinConductor = generarPIN();
+
   const {db, doc, setDoc, serverTimestamp} = window._fb;
   await setDoc(doc(db,"conductores",cedulaHash),{
     cedulaHash,
@@ -1131,13 +1138,14 @@ async function crearConductor(){
     tipo,                    // "titular" | "relevador"
     placaTitular:  placaTit||"",
     placasAutorizadas,
+    pinConductor,
     metaDiaria:    700000,   // heredada — puede personalizarse
     estado:        "activo",
     registradoPor: "accesvial",
     creadoEn:      serverTimestamp()
   });
 
-  toast("✅ Conductor registrado");
+  toast(`✅ Conductor registrado — PIN: ${pinConductor}`);
   toggleForm("form-conductor");
   ["con-nombres","con-cedula","con-placa-titular","con-placas"].forEach(id=>{
     document.getElementById(id).value="";
