@@ -2237,6 +2237,13 @@ async function guardarPasajeroFirebase(reg){
       viaje: reg.viaje,
       hora: reg.hora,
       numPasajero: reg.num,
+      // ── SPRINT 3 (1 sep 2026) — Productividad por conductor ──
+      // Antes solo se guardaba la placa; sin la cédula del conductor
+      // era imposible saber quién produjo cada pasajero cuando varios
+      // conductores (titular/relevador) usan el mismo vehículo.
+      idTurno: configTurno.idTurno || "",
+      cedulaConductor: configTurno.cedula || "",
+      nombreConductor: configTurno.nombreConductor || "",
       registradoEn: serverTimestamp()
     });
 
@@ -2249,6 +2256,24 @@ async function guardarPasajeroFirebase(reg){
       totalPasajeros: increment(1),
       totalRecaudo:   increment(reg.precio||0)
     },{merge:true}).catch(()=>{});
+
+    // ── SPRINT 3 (1 sep 2026) — Productividad por conductor ──
+    // Mismo patrón de contador en tiempo real, ahora acumulado por
+    // cédula del conductor en vez de por placa. Permite saber cuánto
+    // produjo cada persona sin importar qué vehículo manejó ese día
+    // (relevo entre TAL-866 y TZT-414, por ejemplo).
+    // IMPORTANTE: usa el mismo hashSHA() que valida el login del
+    // conductor, para escribir en el MISMO documento que ya existe
+    // en conductores/ — nunca duplicar con la cédula sin hashear.
+    if(configTurno.cedula){
+      const cedulaHashProductividad = await hashSHA(configTurno.cedula);
+      setDoc(doc(db,"conductores",cedulaHashProductividad),{
+        totalPasajerosHistorico: increment(1),
+        totalRecaudoHistorico:   increment(reg.precio||0),
+        ultimaPlacaUsada: configTurno.placa,
+        ultimoRegistro: serverTimestamp()
+      },{merge:true}).catch(()=>{});
+    }
 
     setSyncStatus("ok");
   }catch(e){
