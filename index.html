@@ -862,7 +862,7 @@ const RUTAS=[
   {nombre:"Soacha → Funza/Mosquera",    desde:"Soacha",  hasta:"Funza",   precio:8000, geocercaDestino:"G7"},
   // ── SALIENDO DE BOGOTÁ ──
   {nombre:"Bogotá → Funza/Mosquera",    desde:"Bogotá",  hasta:"Funza",   precio:7000, geocercaDestino:"G7"},
-  {nombre:"Funza → Fontibón Cl13",       desde:"Funza",   hasta:"Bogotá",  precio:6200, geocercaDestino:"G7"},
+  {nombre:"Calle 13 con Cali → Funza/Mosquera", desde:"Calle 13 con Cali", hasta:"Funza/Mosquera", precio:6200, geocercaDestino:"G7"},
   // ── TRAYECTO CORTO POST-PEAJE ──
   {nombre:"Río Bogotá → Funza/Mosq.",   desde:"Río Bog", hasta:"Funza",   precio:3000, geocercaDestino:"G8"},
   // ── RUTA ESPECIAL PLANADAS ──
@@ -1381,7 +1381,17 @@ const GEOCERCAS = [
     descripcion:"Tarifa única $3.400 — bloquea todas las demás tarifas"
   },
   {
-    codigo:"G9", nombre:"Portal Dorado",
+    // ── NUEVA (3 sep 2026) — validada en ruta real, ver /areas/tunim.md ──
+    // Punto de la tarifa $6.200: Calle 13 con Cali ↔ Funza/Mosquera,
+    // bidireccional igual que $2.300/$3.300/$3.700 — el pasajero sube
+    // o baja en este punto según el sentido del recorrido.
+    codigo:"G9", nombre:"Calle 13 con Cali",
+    lat:4.662012, lng:-74.138051, radio:400,
+    tarifas:[6200],
+    descripcion:"Destino/origen $6.200 — Calle 13 con Cali ↔ Funza/Mosquera (bidireccional)"
+  },
+  {
+    codigo:"G10", nombre:"Portal Dorado",
     lat:4.6944, lng:-74.1478, radio:350,
     esDestinoEspecial:true, tarifas:[3400],
     descripcion:"Destino ruta Planadas — tarifa única $3.400"
@@ -1445,6 +1455,56 @@ const GEOCERCAS_OPERATIVAS = [
     destinoPredecible: false
   }
 ];
+
+// ══════════════════════════════════════════════════════════════
+// PUNTOS DE TRAZADO DE RUTA REAL (3 sep 2026) — Sprint 3
+// Capturados en ruta real por el conductor, en ORDEN de recorrido,
+// para cada sentido. A diferencia de GEOCERCAS_OPERATIVAS (5 puntos
+// de origen/destino) y las geocercas de TARIFAS (G1-G10), estos
+// puntos NO disparan voz ni cobran tarifa — su único propósito es:
+//   1. Detectar la dirección real (ida/vuelta) con precisión GPS,
+//      comparando qué punto de la secuencia se toca, en vez de
+//      inferir por el simple aumento/disminución de latitud.
+//   2. Mostrar un progreso REAL del recorrido en la pantalla
+//      "Ruta en curso" (antes solo mostraba 50% o 100%, sin
+//      reflejar dónde iba realmente el bus).
+// ══════════════════════════════════════════════════════════════
+const TRAZADO_IDA = [
+  { nombre:"San Humberto",           lat:4.5716481, lng:-74.2156921 },
+  { nombre:"Primera de Mayo (zona)", lat:4.629852,  lng:-74.168225  },
+  { nombre:"Calle 13 con Cali",      lat:4.662012,  lng:-74.138051  },
+  { nombre:"Río Bogotá",             lat:4.696532,  lng:-74.173188  },
+  { nombre:"Sena Mosquera",          lat:4.697130,  lng:-74.214852  },
+  { nombre:"Entrada Parque Mosquera",lat:4.702845,  lng:-74.226423  },
+  { nombre:"Biblioteca Mosquera",    lat:4.709740,  lng:-74.225449  },
+  { nombre:"Bienvenidos a Funza",    lat:4.714231,  lng:-74.216716  },
+  { nombre:"Tránsito de Funza",      lat:4.718153,  lng:-74.212163  },
+  { nombre:"Cai Siete Trojes",       lat:4.730691,  lng:-74.219801  },
+  { nombre:"Villa Paul",             lat:4.741894,  lng:-74.227311  },
+];
+
+const TRAZADO_VUELTA = [
+  { nombre:"Villa Paul",             lat:4.741894,  lng:-74.227311  },
+  { nombre:"Bifurcación post-Villa Paul", lat:4.728830, lng:-74.221807 },
+  { nombre:"Tránsito de Funza",      lat:4.718028,  lng:-74.213393  },
+  { nombre:"Biblioteca Mosquera",    lat:4.715072,  lng:-74.214586  },
+  { nombre:"Saliendo Mosquera",      lat:4.706586,  lng:-74.229783  },
+  { nombre:"Antes de Río Bogotá",    lat:4.701981,  lng:-74.233918  },
+  { nombre:"Zona Franca",            lat:4.678040,  lng:-74.154162  },
+  { nombre:"Hacia Soacha",           lat:4.656603,  lng:-74.138979  },
+  { nombre:"Av. Cali con Calle 38",  lat:4.635235,  lng:-74.162346  },
+  { nombre:"Primera de Mayo",        lat:4.615776,  lng:-74.163056  },
+  { nombre:"Bosa Estación",          lat:4.596291,  lng:-74.184517  },
+];
+
+// Radio de detección para cada punto de trazado — más amplio que las
+// geocercas de tarifa, ya que solo sirven de referencia de posición,
+// no de cobro. 300m da margen a variaciones normales de GPS urbano.
+const RADIO_TRAZADO = 300;
+
+// Progreso actual en el trazado — cuántos puntos ya se tocaron
+let indiceTrazadoActual = 0;
+let sentidoTrazadoActual = null; // "ida" | "vuelta" | null (aún sin determinar)
 
 // ══ ESTADO OPERATIVO DEL TURNO ══
 let origenOperativo = null;    // geocerca donde inició el turno
@@ -1527,7 +1587,13 @@ function detenerGPS(){
 
 // Verificar en qué geocercas está el bus
 function verificarGeocercas(pos){
+  // ── Detección de dirección — 3 sep 2026 ──
+  // La detección por trazado real (puntos conocidos del corredor)
+  // tiene prioridad. Si el bus está lejos de todo punto conocido,
+  // detectarDireccion() por latitud sigue funcionando como respaldo.
+  detectarDireccionPorTrazado(pos.lat, pos.lng);
   detectarDireccion(pos.lat);
+  actualizarRutaViva(); // refleja el progreso real en cada posición GPS
 
   // ── Control automático de tiempo por tramo ──
   verificarFinTramo(pos.lat, pos.lng);
@@ -1722,7 +1788,8 @@ const VOZ_GEO = {
   "G6_ida":    "Peaje Calle trece. Verifiquen tiquetes de siete u ocho mil.",
   "G7_ida":    "Funza y Mosquera. Destino final. Gracias por viajar.",
   "G8_ida":    "Zona Planadas. Tarifa única tres mil cuatrocientos.",
-  "G9_ida":    "Portal Dorado. Destino final ruta Planadas.",
+  "G9_ida":    "Calle trece con Cali. Tiquetes de seis mil doscientos, su parada.",
+  "G10_ida":   "Portal Dorado. Destino final ruta Planadas.",
   // ── SENTIDO VUELTA — Funza → Soacha ──
   "G7_vuelta": "Salida desde Funza hacia Bogotá y Soacha.",
   "G6_vuelta": "Peaje Calle trece. Verifiquen tiquetes.",
@@ -1731,7 +1798,8 @@ const VOZ_GEO = {
   "G2_vuelta": "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
   "G1_vuelta": "Llegamos a Soacha. Destino final. Hasta pronto.",
   "G8_vuelta": "Zona Planadas. Tarifa única tres mil cuatrocientos.",
-  "G9_vuelta": "Portal Dorado. Origen ruta Planadas.",
+  "G9_vuelta": "Calle trece con Cali. Tiquetes de seis mil doscientos, su parada.",
+  "G10_vuelta":"Portal Dorado. Origen ruta Planadas.",
 };
 
 function alEntrarGeocerca(geo, dist){
@@ -1891,6 +1959,9 @@ function notificarDescensoMasivo(geo){
     mostrarToast("🚶 Destino final — " + pasajerosABordo.length + " pasajero(s) descienden","warn");
     pasajerosABordo = [];
   }
+  // Reset del progreso de trazado — el próximo viaje empieza en 0%
+  indiceTrazadoActual = 0;
+  sentidoTrazadoActual = null;
 }
 
 // Guardar evento de geocerca en Firebase
@@ -2140,6 +2211,34 @@ window.addEventListener("load",()=>{
   document.getElementById("inputFecha").value=hoy;
   document.getElementById("inputHoraInicio").value=new Date().toTimeString().slice(0,5);
 
+  // ── CONTINUIDAD DE TURNO DEL MISMO DÍA (3 sep 2026) ──
+  // La regla de "modal siempre vacío" (30 ago) seguía aplicando SIEMPRE,
+  // sin distinguir entre "alguien nuevo abrió el enlace" y "el mismo
+  // conductor ya validado sigue en su turno de hoy" — obligando a
+  // re-escribir placa/cédula cada vez que la app se recargaba, con
+  // pérdida real de pasajeros durante ese lapso (reportado en ruta).
+  //
+  // Corrección: SOLO si existe un turno en este dispositivo que:
+  //   (a) ya fue validado exitosamente contra Firestore (estadoTurno
+  //       "Activo", generado por el flujo normal — nunca por atajos), Y
+  //   (b) es de la fecha de HOY exacta (no de un día anterior)
+  // se continúa directo, sin pedir el modal. Cualquier otro caso
+  // (turno de otro día, sin turno, datos incompletos) exige el modal
+  // vacío como hasta ahora — la seguridad contra "enlace compartido"
+  // se mantiene intacta para el escenario que la motivó.
+  const hayTurnoValidoHoy = configTurno
+    && configTurno.placa
+    && configTurno.cedula
+    && configTurno.estadoTurno === "Activo"
+    && configTurno.fechaInicio === hoy;
+
+  if(hayTurnoValidoHoy){
+    auditLog("CONTINUIDAD_TURNO_MISMO_DIA","Placa:"+configTurno.placa+" idTurno:"+(configTurno.idTurno||""),"info");
+    document.getElementById("modalConfig").style.display="none";
+    actualizarBarraVehiculo();
+    return;
+  }
+
   // ── SEGURIDAD (30 ago 2026): los campos SIEMPRE inician vacíos ──
   // No se prellenan automáticamente, ni siquiera en el propio dispositivo.
   // Así, si alguien recibe el enlace compartido, jamás ve datos ajenos.
@@ -2149,11 +2248,12 @@ window.addEventListener("load",()=>{
   document.getElementById("inputCedula").value = "";
   document.getElementById("inputNombreConductor").value = "";
 
+  auditLog("MODAL_MOSTRADO","Sin turno válido de hoy en este dispositivo","info");
+
   // Mostrar el botón de recuperación solo si hay algo que recuperar
   const btnRecuperar = document.getElementById("btnUsarDatosAnteriores");
   if(btnRecuperar) btnRecuperar.style.display = configTurno.placa ? "block" : "none";
 
-  // El modal SIEMPRE se muestra — sin excepción
   document.getElementById("modalConfig").style.display="flex";
 });
 
@@ -2504,6 +2604,8 @@ function setViaje(n){
     if(typeof geocercasOperativasActivas!=="undefined") geocercasOperativasActivas.clear();
     if(typeof origenOperativo!=="undefined") origenOperativo = null;
     if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
+    indiceTrazadoActual = 0;
+    sentidoTrazadoActual = null;
   }
   actualizarUI();guardarEstado();
   if(n>anterior) vozIniciarViaje(n);
@@ -2753,6 +2855,74 @@ function detectarDireccion(lat){
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// DETECCIÓN DE DIRECCIÓN POR TRAZADO REAL (3 sep 2026) — Sprint 3
+// Reemplaza la ambigüedad de "¿la latitud sube o baja?" por algo
+// mucho más preciso: ¿el bus está físicamente cerca de un punto
+// real y conocido del corredor? Si el bus toca puntos en el ORDEN
+// del trazado de ida, es ida. Si los toca en el orden de vuelta,
+// es vuelta. Esto es lo que resolvió el problema de comandos de
+// voz confundiendo direcciones (reportado 4 sep).
+// ══════════════════════════════════════════════════════════════
+function distanciaMetros(lat1, lng1, lat2, lng2){
+  const R = 6371000;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function detectarDireccionPorTrazado(lat, lng){
+  // Buscar el punto más cercano en CADA trazado (ida y vuelta)
+  let masCercanoIda = { idx:-1, dist:Infinity };
+  let masCercanoVuelta = { idx:-1, dist:Infinity };
+
+  TRAZADO_IDA.forEach((p,i)=>{
+    const d = distanciaMetros(lat, lng, p.lat, p.lng);
+    if(d < masCercanoIda.dist) masCercanoIda = { idx:i, dist:d };
+  });
+  TRAZADO_VUELTA.forEach((p,i)=>{
+    const d = distanciaMetros(lat, lng, p.lat, p.lng);
+    if(d < masCercanoVuelta.dist) masCercanoVuelta = { idx:i, dist:d };
+  });
+
+  // Si no está cerca de NINGÚN punto conocido (más de RADIO_TRAZADO),
+  // no se puede determinar nada — se deja el estado como está.
+  if(masCercanoIda.dist > RADIO_TRAZADO && masCercanoVuelta.dist > RADIO_TRAZADO) return;
+
+  // Determinar cuál trazado coincide mejor con la posición actual
+  const esIda = masCercanoIda.dist <= masCercanoVuelta.dist;
+  const trazado = esIda ? TRAZADO_IDA : TRAZADO_VUELTA;
+  const idxDetectado = esIda ? masCercanoIda.idx : masCercanoVuelta.idx;
+  const sentidoDetectado = esIda ? "ida" : "vuelta";
+
+  // ── Regla de avance: el índice solo debe AVANZAR dentro del mismo
+  // sentido (nunca retroceder por ruido GPS momentáneo), o CAMBIAR
+  // de sentido si el punto detectado es claramente el inicio del
+  // trazado contrario (idx bajo) — esto ocurre en los puntos de
+  // origen/destino reales (San Humberto / Villa Paul). ──
+  if(sentidoDetectado === sentidoTrazadoActual){
+    if(idxDetectado > indiceTrazadoActual){
+      indiceTrazadoActual = idxDetectado;
+    }
+  } else {
+    // Cambio de sentido: solo se acepta si estamos cerca del inicio
+    // del nuevo trazado (idx bajo) — evita saltos falsos a mitad
+    // de camino por una lectura de GPS ambigua.
+    if(idxDetectado <= 1){
+      sentidoTrazadoActual = sentidoDetectado;
+      indiceTrazadoActual = idxDetectado;
+      if(sentidoDetectado !== direccionRuta){
+        direccionRuta = sentidoDetectado;
+        historialLatitudes = []; // limpiar detector viejo, ya no es la fuente principal
+        const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
+        mostrarToast(msg, "");
+        auditLog("DIRECCION_POR_TRAZADO","Sentido:"+direccionRuta+" punto:"+trazado[idxDetectado].nombre,"info");
+      }
+    }
+  }
+}
+
 // Permite al conductor cambiar dirección manualmente si GPS no la detecta
 function ciclarModoAudio(){
   const modos = ["completo", "solo_voz", "silencio"];
@@ -2771,6 +2941,10 @@ function cambiarDireccionManual(){
   if(typeof geocercasOperativasActivas!=="undefined") geocercasOperativasActivas.clear();
   if(typeof origenOperativo!=="undefined") origenOperativo = null;
   if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
+  // Sincronizar el trazado con la decisión manual del conductor —
+  // así la detección por GPS no la contradice de inmediato.
+  sentidoTrazadoActual = direccionRuta;
+  indiceTrazadoActual = 0;
   const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
   mostrarToast(msg, "");
   hablar(direccionRuta === "ida" ? "Modo ida" : "Modo vuelta, Funza hacia Soacha", 1.0, 1.1);
@@ -2792,7 +2966,7 @@ const VOZ_DESTINOS_IDA = {
   3700: "Su tiquete va hasta el Río Bogotá. Buen viaje.",
   8000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
   7000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
-  6200: "Su tiquete va hasta Fontibón, Calle trece. Buen viaje.",
+  6200: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
   3000: "Su tiquete va hasta Funza o Mosquera. Buen viaje.",
   3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
@@ -2803,7 +2977,7 @@ const VOZ_DESTINOS_VUELTA = {
   3700: "Su tiquete va hasta Soacha. Buen viaje.",
   8000: "Su tiquete va hasta Soacha. Buen viaje.",
   7000: "Su tiquete va hasta Bogotá. Buen viaje.",
-  6200: "Su tiquete va hasta Fontibón, Calle trece, viniendo desde Funza. Buen viaje.",
+  6200: "Su tiquete va hasta la Calle trece con Cali. Buen viaje.",
   3000: "Su tiquete cubre hasta el Río Bogotá. Buen viaje.",
   3400: "Su tiquete va hasta Portal Dorado. Buen viaje.",
 };
@@ -3042,7 +3216,14 @@ function registrar(idx){
   btn.classList.remove("flash-anim");void btn.offsetWidth;btn.classList.add("flash-anim");
   setTimeout(()=>btn.classList.remove("flash-anim"),300);
   mostrarConfirmacion(ruta.nombre,ruta.precio,totalHoy);
-  sonarAlarmaConFiltro("soft");
+  // ── CORRECCIÓN (3 sep 2026) — beep eliminado ──
+  // Se confirmó en pruebas reales que sonarAlarmaConFiltro() usa
+  // new Audio().play(), lo cual activa el "audio focus" exclusivo de
+  // Android y pausa la radio/música del conductor. La voz de
+  // hablar() (speechSynthesis) NO tiene este problema — solo el beep.
+  // La confirmación visual (resaltado verde) + la voz de precio ya
+  // son suficiente señal de que el registro fue exitoso.
+  // sonarAlarmaConFiltro("soft"); ← eliminado intencionalmente
   vozPagoRegistrado(ruta.precio);
   actualizarUI();
   guardarPasajeroFirebase(reg);
@@ -3234,6 +3415,16 @@ function actualizarRutaViva(){
   if(titulo) titulo.textContent = "Ruta en curso — Viaje "+(typeof viajeActual!=="undefined"?viajeActual:1);
   if(origenEl) origenEl.innerHTML = "<b>"+origenOperativo.nombre+"</b>";
 
+  // ── PROGRESO REAL (3 sep 2026) — Sprint 3 ──
+  // Antes: solo 50% (en curso) o 100% (llegó) — no reflejaba el
+  // avance real. Ahora: porcentaje real según cuántos puntos del
+  // trazado de 11 ya se tocaron, con el nombre del punto actual.
+  const trazado = sentidoTrazadoActual === "vuelta" ? TRAZADO_VUELTA : TRAZADO_IDA;
+  const totalPuntos = trazado.length - 1; // el último punto = destino = 100%
+  const pctReal = totalPuntos > 0
+    ? Math.min(100, Math.round((indiceTrazadoActual/totalPuntos)*100))
+    : 0;
+
   if(typeof destinoOperativo!=="undefined" && destinoOperativo){
     if(destinoEl) destinoEl.innerHTML = "<b>"+destinoOperativo.nombre+"</b>";
     if(progresoEl) progresoEl.style.width = "100%";
@@ -3242,9 +3433,14 @@ function actualizarRutaViva(){
     const destEsperado = origenOperativo.destinosEsperados && origenOperativo.destinosEsperados[0]
       ? origenOperativo.destinosEsperados[0].replace("_"," ")
       : "destino";
-    if(destinoEl) destinoEl.textContent = destEsperado;
-    if(progresoEl) progresoEl.style.width = "50%";
-    if(puntoEl) puntoEl.style.left = "50%";
+    if(destinoEl){
+      const puntoActualNombre = trazado[indiceTrazadoActual]?.nombre;
+      destinoEl.textContent = puntoActualNombre
+        ? destEsperado + " ("+puntoActualNombre+" — "+pctReal+"%)"
+        : destEsperado;
+    }
+    if(progresoEl) progresoEl.style.width = pctReal+"%";
+    if(puntoEl) puntoEl.style.left = pctReal+"%";
   }
 }
 
