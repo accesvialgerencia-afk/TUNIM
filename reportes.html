@@ -350,6 +350,49 @@ async function cargarReporte(){
         <div class="empty-state-txt">Sin liquidaciones registradas en este período</div>
       </div>`;
     } else {
+      // ── SPRINT 3 (4 sep 2026) — Productividad por ruta ──
+      // Cada liquidación YA guarda "conteos" (pasajeros por tarifa,
+      // en el mismo orden que RUTAS) desde hace días — nunca se había
+      // usado para mostrarlo. Se suman los conteos de todos los días
+      // del período, sin ninguna consulta adicional a Firestore.
+      const NOMBRES_RUTAS = [
+        {nombre:"Soacha → Bosa Estación", precio:2300},
+        {nombre:"Soacha → Av. Villavicencio", precio:3300},
+        {nombre:"Soacha → Río Bogotá", precio:3700},
+        {nombre:"Soacha → Funza/Mosquera", precio:8000},
+        {nombre:"Bogotá → Funza/Mosquera", precio:7000},
+        {nombre:"Calle 13 con Cali → Funza/Mosquera", precio:6200},
+        {nombre:"Río Bogotá → Funza/Mosq.", precio:3000},
+        {nombre:"Planadas → Portal Dorado", precio:3400},
+      ];
+      const conteosTotales = new Array(NOMBRES_RUTAS.length).fill(0);
+      dias.forEach(d=>{
+        if(Array.isArray(d.conteos)){
+          d.conteos.forEach((c,i)=>{ if(i<conteosTotales.length) conteosTotales[i] += (c||0); });
+        }
+      });
+
+      const rutasConDatos = NOMBRES_RUTAS
+        .map((r,i)=>({...r, pax:conteosTotales[i], total:conteosTotales[i]*r.precio}))
+        .filter(r=>r.pax>0)
+        .sort((a,b)=>b.total-a.total); // de mayor a menor recaudo
+
+      if(rutasConDatos.length){
+        html += `<div class="seccion-titulo">Productividad por ruta</div>`;
+        rutasConDatos.forEach(r=>{
+          const pctDelTotal = totalRecaudo>0 ? Math.round((r.total/totalRecaudo)*100) : 0;
+          html += `
+            <div class="dia-card">
+              <div>
+                <div class="dia-fecha">${r.nombre}</div>
+                <div class="dia-sub">${r.pax} pasajeros · $${r.precio.toLocaleString("es-CO")} c/u · ${pctDelTotal}% del total</div>
+              </div>
+              <div class="dia-monto" style="color:var(--ambar)">$${Math.round(r.total/1000)}k</div>
+            </div>
+          `;
+        });
+      }
+
       html += `<div class="seccion-titulo">Detalle por día</div>`;
       dias.forEach(d => {
         const meta = 700000;
@@ -361,7 +404,7 @@ async function cargarReporte(){
               <div class="dia-dot" style="background:${color}"></div>
               <div>
                 <div class="dia-fecha">${formatFecha(d.fecha)}</div>
-                <div class="dia-sub">${d.pax||0} pasajeros · ${pct}% de meta</div>
+                <div class="dia-sub">${d.placa||"—"} · ${d.pax||0} pasajeros · ${pct}% de meta</div>
               </div>
             </div>
             <div class="dia-monto" style="color:${color}">$${Math.round((d.total||0)/1000)}k</div>
