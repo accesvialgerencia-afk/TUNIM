@@ -1033,7 +1033,12 @@ async function validarYCargarTurno(placa, cedula){
         desde:           t.desde,
         hasta:           t.hasta,
         precio:          t.precio,
-        geocercaDestino: t.geocercaDestino||""
+        geocercaDestino: t.geocercaDestino||"",
+        // ── 4 sep 2026: mensajes de voz personalizados por tarifa y
+        // sentido — permite que CUALQUIER empresa configure su propio
+        // comando de voz desde admin.html, sin tocar código. ──
+        vozIda:          t.vozIda||"",
+        vozVuelta:       t.vozVuelta||""
       }));
       console.log("☁ Tarifas cargadas desde Firestore:", RUTAS_DINAMICAS.length);
     } else {
@@ -3002,24 +3007,34 @@ function vozPagoRegistrado(precio){
     const dir = direccionRuta || "ida";
     const vozDir = dir === "vuelta" ? VOZ_DESTINOS_VUELTA : VOZ_DESTINOS_IDA;
 
+    // ── 4 sep 2026: PRIORIDAD a la voz configurada en Firestore ──
+    // Cualquier empresa puede definir su propio mensaje por tarifa y
+    // sentido desde admin.html. Si no lo definió (tarifa vieja o campo
+    // vacío), se usa el diccionario fijo VOZ_DESTINOS_* como respaldo
+    // — así ninguna tarifa existente se queda sin mensaje.
+    const rutaDinamica = getRutas().find(r=>r.precio===precio);
+    const vozPersonalizada = rutaDinamica
+      ? (dir === "vuelta" ? rutaDinamica.vozVuelta : rutaDinamica.vozIda)
+      : "";
+    const mensajeFinal = vozPersonalizada || vozDir[precio] || "Buen viaje.";
+
     // ── R3: $7.000 y $8.000 — siempre anuncia con conteo total hacia Funza ──
     if(precio === 8000 || precio === 7000){
       const totalFunza = (estado.conteos[getRutas().findIndex(r=>r.precio===8000)]||0)
                        + (estado.conteos[getRutas().findIndex(r=>r.precio===7000)]||0);
       const destino = dir === "vuelta" ? "Soacha" : "Funza o Mosquera";
-      hablar("Van " + totalFunza + " pasajeros para " + destino + ". " + (vozDir[precio]||"Buen viaje."), 1.0, 1.05);
+      hablar("Van " + totalFunza + " pasajeros para " + destino + ". " + mensajeFinal, 1.0, 1.05);
       return;
     }
 
     // ── R1: Cada 5 pasajeros de la misma tarifa — anuncia destino ──
     if(conteoActual % 5 === 0){
-      hablar("Llevan " + conteoActual + " pasajeros. " + (vozDir[precio]||"Buen viaje."), 1.0, 1.05);
+      hablar("Llevan " + conteoActual + " pasajeros. " + mensajeFinal, 1.0, 1.05);
       return;
     }
 
     // ── R2: Marcación normal — mensaje corto ──
-    const msg = vozDir[precio] || "Buen viaje.";
-    hablar(msg, 1.0, 1.05);
+    hablar(mensajeFinal, 1.0, 1.05);
 
   }, 3000);
 }
