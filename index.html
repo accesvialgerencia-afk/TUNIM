@@ -2312,7 +2312,7 @@ async function sincronizarConfigFirebase(){
       origenOperativo: (typeof origenOperativo!=="undefined"&&origenOperativo)?origenOperativo.nombre:"",
       destinoOperativo: (typeof destinoOperativo!=="undefined"&&destinoOperativo)?destinoOperativo.nombre:"",
       totalPasajeros:estado.conteos.reduce((a,b)=>a+b,0),
-      totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      totalRecaudo:estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0),
       actualizadoEn:serverTimestamp()
     },{merge:true});
 
@@ -2508,7 +2508,7 @@ function obtenerPctPropietario(){
 }
 
 function calcularLiquidacion(){
-  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   const {total:totalGastos}=obtenerGastosHoy();
   const neto=Math.max(0,totalDin-totalGastos);
   const pct=obtenerPctPropietario();
@@ -2523,7 +2523,7 @@ function calcularLiquidacion(){
 function liquidarDia(est){
   try{
     const totalPax=est.conteos.reduce((a,b)=>a+b,0);
-    const totalDin=est.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+    const totalDin=est.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
     if(totalPax===0)return;
     const {gastos,total:totalGastos}=obtenerGastosHoy();
     const pct=obtenerPctPropietario();
@@ -2569,7 +2569,7 @@ setInterval(verificarCambioDia,60000);
 
 function mostrarModalConfirmarCierre(){
   const totalPax = estado.conteos.reduce((a,b)=>a+b,0);
-  const totalDin = estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const totalDin = estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   const seguir = confirm(
     "Tu turno sigue activo desde ayer.\n\n"+
     "Llevas "+totalPax+" pasajeros — $"+totalDin.toLocaleString("es-CO")+"\n\n"+
@@ -3052,7 +3052,7 @@ function vozIniciarViaje(n){
 // Mensaje de cierre de turno
 function vozCierreTurno(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
-  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   const msg=`¡Excelente jornada! Hoy transportaste ${totalPax} pasajeros y recaudaste ${totalDin.toLocaleString("es-CO")} pesos. Recuerda registrar tus gastos y enviar el reporte del día. ¡Hasta mañana!`;
   hablar(msg,0.88,1.1);
 }
@@ -3095,7 +3095,7 @@ function formatFechaCol(d){
 // ══ REPORTE POR CORREO — EmailJS ══
 function enviarReportePorCorreo(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
-  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   const {gastos,total:totalGastos}=obtenerGastosHoy();
   const pct=obtenerPctPropietario();
   const neto=Math.max(0,totalDin-totalGastos);
@@ -3273,7 +3273,7 @@ async function persistirEstadoTurno(){
       historial:         estado.historial.slice(0,50),
       viajeActual:       viajeActual,
       totalPasajeros:    estado.conteos.reduce((a,b)=>a+b,0),
-      totalRecaudo:      estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),
+      totalRecaudo:      estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0),
       ultimaActualizacion: serverTimestamp()
     },{merge:true});
     setSyncStatus("ok");
@@ -3461,9 +3461,9 @@ function actualizarRutaViva(){
 
 function actualizarUI(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
-  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const totalDin=estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   const viajeConteos=estado.conteosViaje[viajeActual-1];
-  const viajeDin=viajeConteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0);
+  const viajeDin=viajeConteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0);
   document.getElementById("rbPax").textContent=totalPax;
   document.getElementById("rbTotal").textContent=formatCorto(totalDin);
   document.getElementById("rbViaje").textContent=formatCorto(viajeDin);
@@ -3507,7 +3507,7 @@ function renderReporteSemana(){
   for(let i=6;i>=0;i--){
     const d=new Date(hoy);d.setDate(hoy.getDate()-i);const key=diaKey(d);
     const entrada=hist.find(h=>h.fecha===key);
-    if(key===diaKey()){dias.push({fecha:key,pax:estado.conteos.reduce((a,b)=>a+b,0),total:estado.conteos.reduce((s,c,i)=>s+c*RUTAS[i].precio,0),esHoy:true});}
+    if(key===diaKey()){dias.push({fecha:key,pax:estado.conteos.reduce((a,b)=>a+b,0),total:estado.conteos.reduce((s,c,i)=>s+c*getRutas()[i].precio,0),esHoy:true});}
     else{dias.push({fecha:key,pax:entrada?entrada.pax:0,total:entrada?entrada.total:0,esHoy:false});}
   }
   const semPax=dias.reduce((a,b)=>a+b.pax,0),semDin=dias.reduce((a,b)=>a+b.total,0);
@@ -3528,7 +3528,7 @@ function renderReporteMes(){
     let pax=0,total=0;
     for(let d=new Date(inicio);d<=fin;d.setDate(d.getDate()+1)){
       const key=diaKey(d);
-      if(key===diaKey()){pax+=estado.conteos.reduce((a,b)=>a+b,0);total+=estado.conteos.reduce((ss,c,i)=>ss+c*RUTAS[i].precio,0);}
+      if(key===diaKey()){pax+=estado.conteos.reduce((a,b)=>a+b,0);total+=estado.conteos.reduce((ss,c,i)=>ss+c*getRutas()[i].precio,0);}
       else{const e=hist.find(h=>h.fecha===key);if(e){pax+=e.pax;total+=e.total;}}
     }
     semanas.push({label:`Sem ${4-s} (${inicio.getDate()}/${inicio.getMonth()+1})`,pax,total});
