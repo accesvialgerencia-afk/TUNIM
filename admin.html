@@ -363,8 +363,12 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
           <div class="f-group"><label class="f-label">Hasta</label><input class="f-input" id="tar-hasta" placeholder="Ej: Bogotá"></div>
         </div>
         <div class="f-group" style="margin-bottom:10px">
-          <label class="f-label">Voz al pasajero</label>
-          <input class="f-input" id="tar-voz" placeholder="Ej: Su destino es Bosa Estación. Que tenga buen viaje.">
+          <label class="f-label">Voz al pasajero — sentido IDA</label>
+          <input class="f-input" id="tar-voz-ida" placeholder="Ej: Su tiquete va hasta Bosa Estación. Buen viaje.">
+        </div>
+        <div class="f-group" style="margin-bottom:10px">
+          <label class="f-label">Voz al pasajero — sentido VUELTA</label>
+          <input class="f-input" id="tar-voz-vuelta" placeholder="Ej: Su tiquete va hasta Soacha. Buen viaje.">
         </div>
         <button class="btn-primary" onclick="agregarTarifa()">✓ AGREGAR TARIFA</button>
       </div>
@@ -1126,7 +1130,8 @@ async function agregarTarifa(){
   const destino= document.getElementById("tar-destino").value;
   const desde  = document.getElementById("tar-desde").value.trim();
   const hasta  = document.getElementById("tar-hasta").value.trim();
-  const voz    = document.getElementById("tar-voz").value.trim();
+  const vozIda    = document.getElementById("tar-voz-ida").value.trim();
+  const vozVuelta = document.getElementById("tar-voz-vuelta").value.trim();
   if(!empId||!nombre||!precio){ toast("Completa todos los campos","error"); return; }
 
   // ── CORRECCIÓN (3 sep 2026) ──
@@ -1164,14 +1169,15 @@ async function agregarTarifa(){
     corridorId,
     geocercaOrigen:  origen,
     geocercaDestino: destino,
-    voz: voz||"",
+    vozIda: vozIda||"",
+    vozVuelta: vozVuelta||"",
     activo: true,
     orden: ordenSiguiente,
     actualizadoEn: serverTimestamp()
   });
 
   toast("✅ Tarifa agregada y visible en TUNIM");
-  ["tar-nombre","tar-precio","tar-desde","tar-hasta","tar-voz"].forEach(id=>document.getElementById(id).value="");
+  ["tar-nombre","tar-precio","tar-desde","tar-hasta","tar-voz-ida","tar-voz-vuelta"].forEach(id=>document.getElementById(id).value="");
   cargarTarifasEmpresa();
 }
 
