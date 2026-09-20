@@ -1510,6 +1510,18 @@ const RADIO_TRAZADO = 300;
 // Progreso actual en el trazado — cuántos puntos ya se tocaron
 let indiceTrazadoActual = 0;
 let sentidoTrazadoActual = null; // "ida" | "vuelta" | null (aún sin determinar)
+let anuncioMosqueraHecho = false; // evita repetir el anuncio de llegada varias veces por viaje
+
+// ── PERÍODO DE GRACIA EN GEOCERCAS OPERATIVAS (19 sep 2026) ──
+// Al detenerse en una de las 5 geocercas operativas (San Humberto,
+// Llanos, Ciudad Verde, Villa Paul, INPEC), detectarDireccionPorTrazado()
+// puede confundirse con el ruido normal de GPS de un bus PARADO
+// (Villa Paul e INPEC son puntos compartidos entre ambos trazados).
+// Durante los primeros 5 minutos tras confirmar la geocerca operativa,
+// se pausa la detección por trazado — solo la geocerca operativa
+// decide la dirección, que es la fuente más confiable en ese momento.
+const MINUTOS_GRACIA_GEOCERCA_OPERATIVA = 5;
+let momentoUltimaGeocercaOperativa = null; // timestamp (ms) de la última confirmación
 
 // ══ ESTADO OPERATIVO DEL TURNO ══
 let origenOperativo = null;    // geocerca donde inició el turno
@@ -1647,7 +1659,15 @@ function alEntrarGeocercaOperativa(geo){
   console.log("📍 Geocerca operativa:", geo.nombre, "| Tipo:", geo.tipo);
 
   // Es un punto de ORIGEN — inicio de turno
-  if((geo.tipo === "origen" || geo.tipo === "origen_bifurcacion") && !origenOperativo){
+  // ── CORRECCIÓN (19 sep 2026) ──
+  // Antes solo aceptaba tipo "origen" u "origen_bifurcacion" — esto
+  // EXCLUÍA por completo a Villa Paul e INPEC (tipo "origen_y_destino"),
+  // que son exactamente las 2 geocercas donde se inicia turno en
+  // sentido VUELTA (Funza→Soacha). Confirmado como causa real de que
+  // la sincronización de dirección nunca se ejecutara para quienes
+  // empiezan su turno en Funza — el botón ida/vuelta no reflejaba
+  // correctamente el sentido real del recorrido.
+  if((geo.tipo === "origen" || geo.tipo === "origen_bifurcacion" || geo.tipo === "origen_y_destino") && !origenOperativo){
     origenOperativo = geo;
     horaOrigenGPS = hora;
 
@@ -1655,11 +1675,21 @@ function alEntrarGeocercaOperativa(geo){
     // Esto es más confiable que el GPS por latitud, que puede fallar con
     // ruido urbano (curvas, tráfico, semáforos). La geocerca operativa
     // ya sabe si es zona de salida "ida" o "vuelta".
-    if(geo.sentido && geo.sentido !== direccionRuta){
-      direccionRuta = geo.sentido;
-      historialLatitudes = [];
-      cambiosDireccionPendientes = 0;
-      console.log("🧭 Dirección sincronizada por geocerca operativa:", geo.sentido);
+    if(geo.sentido){
+      // ── PERÍODO DE GRACIA (19 sep 2026) ──
+      // Se activa SIEMPRE que se confirma una geocerca operativa, sin
+      // importar si la dirección ya coincidía — porque el riesgo real
+      // es que el bus quede PARADO ahí varios minutos (ej. esperando
+      // turno de salida), tiempo en que detectarDireccionPorTrazado()
+      // podría "confundirse" con el ruido de GPS estacionario y
+      // sobrescribir esta dirección confirmada.
+      momentoUltimaGeocercaOperativa = Date.now();
+      if(geo.sentido !== direccionRuta){
+        direccionRuta = geo.sentido;
+        historialLatitudes = [];
+        cambiosDireccionPendientes = 0;
+        console.log("🧭 Dirección sincronizada por geocerca operativa:", geo.sentido);
+      }
     }
 
     // Actualizar configTurno con origen real
@@ -1798,6 +1828,13 @@ const VOZ_GEO = {
   // ── SENTIDO VUELTA — Funza → Soacha ──
   "G7_vuelta": "Salida desde Funza hacia Bogotá y Soacha.",
   "G6_vuelta": "Peaje Calle trece. Verifiquen tiquetes.",
+  // ── CORRECCIÓN (19 sep 2026) — G5_vuelta faltaba por completo ──
+  // La tarifa $7.000 SÍ es bidireccional (confirmado por el negocio):
+  // se sube en Bosa La Despensa hacia Funza, O se sube en Funza y
+  // se baja antes de llegar a Bosa La Despensa. Sin este mensaje,
+  // quien pagaba $7.000 en sentido vuelta no recibía ningún anuncio
+  // de geocerca al llegar a su punto de destino real.
+  "G5_vuelta": "Bosa La Despensa. Destino tiquetes de siete mil.",
   "G4_vuelta": "Río Bogotá. Frontera urbana. Tiquetes de tres mil setecientos, su zona.",
   "G3_vuelta": "Avenida Primera de Mayo. Tiquetes de tres mil trescientos, su parada.",
   "G2_vuelta": "Bosa Estación. Tiquetes de dos mil trescientos, su parada.",
@@ -1813,7 +1850,14 @@ function alEntrarGeocerca(geo, dist){
   const claveVoz = geo.codigo + "_" + direccionRuta;
   const vozMsg = VOZ_GEO[claveVoz];
 
-  sonarAlarma("medium");
+  // ── CORRECCIÓN (7 sep 2026) — beep eliminado ──
+  // Confirmado en ruta real: sonarAlarma() usa new Audio().play(),
+  // que activa el "audio focus" exclusivo de Android y pausa la
+  // radio/YouTube del conductor — el mismo problema ya corregido
+  // para el beep de tarifas, pero este quedó activo en geocercas.
+  // La voz de hablar() (speechSynthesis) por sí sola no interrumpe
+  // la música, así que es suficiente señal sin necesitar el beep.
+  // sonarAlarma("medium"); ← eliminado intencionalmente
   if(vozMsg){
     setTimeout(()=>hablar(vozMsg, 1.0, 1.1), 400);
   }
@@ -1967,6 +2011,7 @@ function notificarDescensoMasivo(geo){
   // Reset del progreso de trazado — el próximo viaje empieza en 0%
   indiceTrazadoActual = 0;
   sentidoTrazadoActual = null;
+  anuncioMosqueraHecho = false;
 }
 
 // Guardar evento de geocerca en Firebase
@@ -2611,6 +2656,7 @@ function setViaje(n){
     if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
     indiceTrazadoActual = 0;
     sentidoTrazadoActual = null;
+    anuncioMosqueraHecho = false;
   }
   actualizarUI();guardarEstado();
   if(n>anterior) vozIniciarViaje(n);
@@ -2878,6 +2924,37 @@ function distanciaMetros(lat1, lng1, lat2, lng2){
 }
 
 function detectarDireccionPorTrazado(lat, lng){
+  // ── ANUNCIO DE LLEGADA A MOSQUERA (19 sep 2026) ──
+  // Usa el punto real "Entrada Parque Mosquera" del trazado de IDA
+  // (ya capturado en ruta, no una geocerca nueva). Se dispara UNA
+  // sola vez por viaje. Se evalúa AQUÍ, antes que cualquier posible
+  // 'return' de la función, para que nunca dependa de que la
+  // geografía evite una coincidencia con el período de gracia de
+  // abajo — quedan completamente desacoplados.
+  const idxEntradaMosquera = TRAZADO_IDA.findIndex(p => p.nombre === "Entrada Parque Mosquera");
+  if(idxEntradaMosquera >= 0 && !anuncioMosqueraHecho){
+    const distMosquera = distanciaMetros(lat, lng, TRAZADO_IDA[idxEntradaMosquera].lat, TRAZADO_IDA[idxEntradaMosquera].lng);
+    if(distMosquera <= RADIO_TRAZADO){
+      anuncioMosqueraHecho = true;
+      setTimeout(()=>hablar("Gracias por viajar en Autoboy. Llegamos a Mosquera.", 1.0, 1.1), 400);
+      auditLog("ANUNCIO_LLEGADA_MOSQUERA","Punto: Entrada Parque Mosquera","info");
+    }
+  }
+
+  // ── PERÍODO DE GRACIA (19 sep 2026) ──
+  // Si una geocerca operativa confirmó la dirección hace menos de
+  // MINUTOS_GRACIA_GEOCERCA_OPERATIVA, esta función NO debe competir
+  // por cambiar direccionRuta — el bus probablemente sigue detenido
+  // en el paradero (Villa Paul, INPEC, San Humberto, Llanos o Ciudad
+  // Verde), y el ruido de GPS estacionario podría sobrescribir
+  // erróneamente una dirección ya confirmada con certeza.
+  if(momentoUltimaGeocercaOperativa){
+    const minutosDesdeGeocerca = (Date.now() - momentoUltimaGeocercaOperativa) / 60000;
+    if(minutosDesdeGeocerca < MINUTOS_GRACIA_GEOCERCA_OPERATIVA){
+      return; // en período de gracia — no evaluar trazado todavía
+    }
+  }
+
   // Buscar el punto más cercano en CADA trazado (ida y vuelta)
   let masCercanoIda = { idx:-1, dist:Infinity };
   let masCercanoVuelta = { idx:-1, dist:Infinity };
@@ -2890,6 +2967,7 @@ function detectarDireccionPorTrazado(lat, lng){
     const d = distanciaMetros(lat, lng, p.lat, p.lng);
     if(d < masCercanoVuelta.dist) masCercanoVuelta = { idx:i, dist:d };
   });
+
 
   // Si no está cerca de NINGÚN punto conocido (más de RADIO_TRAZADO),
   // no se puede determinar nada — se deja el estado como está.
@@ -2950,6 +3028,7 @@ function cambiarDireccionManual(){
   // así la detección por GPS no la contradice de inmediato.
   sentidoTrazadoActual = direccionRuta;
   indiceTrazadoActual = 0;
+  anuncioMosqueraHecho = false;
   const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
   mostrarToast(msg, "");
   hablar(direccionRuta === "ida" ? "Modo ida" : "Modo vuelta, Funza hacia Soacha", 1.0, 1.1);
@@ -2977,8 +3056,12 @@ const VOZ_DESTINOS_IDA = {
 };
 
 const VOZ_DESTINOS_VUELTA = {
-  2300: "Su tiquete va hasta Bosa Estación. Buen viaje.",
-  3300: "Su tiquete va hasta Avenida Primera de Mayo. Buen viaje.",
+  // ── CORRECCIÓN (19 sep 2026) — bug encontrado en auditoría preventiva ──
+  // $2.300 y $3.300 en VUELTA decían el NOMBRE DE SU PROPIO ORIGEN
+  // (Bosa Estación / Av. Primera de Mayo) en lugar de su destino real
+  // (Soacha) — confuso para el pasajero, que ya sabe dónde se subió.
+  2300: "Su tiquete va hasta Soacha. Buen viaje.",
+  3300: "Su tiquete va hasta Soacha. Buen viaje.",
   3700: "Su tiquete va hasta Soacha. Buen viaje.",
   8000: "Su tiquete va hasta Soacha. Buen viaje.",
   7000: "Su tiquete va hasta Bogotá. Buen viaje.",
@@ -2996,6 +3079,19 @@ function vozPagoRegistrado(precio){
   const numActual = contadorDebounce;
   clearTimeout(vozDebounceTimer);
 
+  // ── CORRECCIÓN (19 sep 2026) — capturar dirección en el momento real ──
+  // Antes: direccionRuta se leía DENTRO del setTimeout, 3 segundos
+  // después de marcar la tarifa. En esos 3 segundos, el GPS puede
+  // pasar por un punto AMBIGUO del trazado (Río Bogotá aparece en
+  // ambos sentidos, IDA y VUELTA) y direccionRuta cambia por error
+  // — confirmado como causa real del bug donde $3.700 en sentido
+  // vuelta anunciaba "hasta Río Bogotá" (mensaje de IDA) en vez de
+  // "hasta Soacha" (mensaje de VUELTA).
+  // Ahora: se congela el sentido en el instante exacto del cobro,
+  // que es lo que el conductor realmente vivió — sin importar qué
+  // le pase a direccionRuta en los 3 segundos siguientes.
+  const direccionAlMomentoDelCobro = direccionRuta;
+
   // Acumular conteo por precio
   _conteosPorPrecio[precio] = (_conteosPorPrecio[precio] || 0) + 1;
   const conteoActual = _conteosPorPrecio[precio];
@@ -3004,7 +3100,7 @@ function vozPagoRegistrado(precio){
   vozDebounceTimer = setTimeout(()=>{
     if(numActual !== contadorDebounce) return; // Llegaron más marcaciones
 
-    const dir = direccionRuta || "ida";
+    const dir = direccionAlMomentoDelCobro || "ida";
     const vozDir = dir === "vuelta" ? VOZ_DESTINOS_VUELTA : VOZ_DESTINOS_IDA;
 
     // ── 4 sep 2026: PRIORIDAD a la voz configurada en Firestore ──
