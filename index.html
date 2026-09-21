@@ -1063,7 +1063,8 @@ async function validarYCargarTurno(placa, cedula){
       corredor:  corridorId,
       planTunim: veh.planTunim||"basico",
       placaReal: placaReal,
-      esAdmin:   esAdmin
+      esAdmin:   esAdmin,
+      correoPropietario: veh.correo||""
     };
 
   }catch(e){
@@ -2156,6 +2157,7 @@ async function _guardarConfigTurnoInterno(){
     corredor:          resultado.corredor||"Funza-Mosquera-Bogotá-Soacha",
     planTunim:         resultado.planTunim||"basico",
     modoAcceso:        resultado.modo||"local",
+    correoPropietario: resultado.correoPropietario||"",
     viajesCompletados: 0
   };
   try{ localStorage.setItem(CONFIG_KEY,JSON.stringify(configTurno)); }catch(e){}
@@ -3291,7 +3293,17 @@ function enviarReportePorCorreo(){
   emailjs.send("service_mext8fi","template_5dk2xxk",{
     fecha: hoy,
     placa: placa,
-    reporte: reporte
+    reporte: reporte,
+    // ── CORRECCIÓN (21 sep 2026) ──
+    // Antes el destinatario estaba FIJO en la plantilla de EmailJS
+    // (siempre accesvialgerencia@gmail.com), sin importar el vehículo.
+    // Ahora se envía el correo REAL del propietario (capturado en
+    // registro.html, guardado en vehiculos/{placa}.correo desde el
+    // 21 sep) — necesario para que TUNIM funcione con más de un
+    // cliente/propietario, no solo con Autoboy. Si el vehículo aún
+    // no tiene correo registrado (aprobado antes de esta corrección),
+    // cae de respaldo al correo de ACCESVIAL para no perder el reporte.
+    to_email: configTurno.correoPropietario || "accesvialgerencia@gmail.com"
   }).then(()=>{
     mostrarToast("Reporte enviado a tu correo","");
     hablar("Reporte del dia enviado correctamente.",0.9,1.1);
