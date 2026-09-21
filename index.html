@@ -1679,6 +1679,14 @@ function alEntrarGeocercaOperativa(geo){
     origenOperativo = geo;
     horaOrigenGPS = hora;
 
+    // ── Guardar el sentido de inicio del turno (20 sep 2026) ──
+    // Se guarda UNA sola vez, la primera geocerca operativa del día,
+    // para poder traducir correctamente ida/vuelta en los mensajes
+    // de voz durante todo el turno (ver direccionParaVoz() arriba).
+    if(!sentidoInicioTurno && geo.sentido){
+      sentidoInicioTurno = geo.sentido;
+    }
+
     // ── CORRECCIÓN: sincronizar dirección con el sentido de la geocerca ──
     // Esto es más confiable que el GPS por latitud, que puede fallar con
     // ruido urbano (curvas, tráfico, semáforos). La geocerca operativa
@@ -1855,7 +1863,12 @@ const VOZ_GEO = {
 function alEntrarGeocerca(geo, dist){
   console.log("Geocerca:", geo.codigo, "| Dirección:", direccionRuta);
 
-  const claveVoz = geo.codigo + "_" + direccionRuta;
+  // ── CORRECCIÓN (20 sep 2026): usar direccionParaVoz() en lugar de
+  // direccionRuta directo — el mensaje debe reflejar "ida/vuelta"
+  // relativo al origen real del turno de ESTE conductor, no siempre
+  // "vuelta=hacia Soacha" fijo (confirmado: para quien inicia en
+  // Funza, su "ida" es justamente hacia Soacha). ──
+  const claveVoz = geo.codigo + "_" + direccionParaVoz();
   const vozMsg = VOZ_GEO[claveVoz];
 
   // ── CORRECCIÓN (7 sep 2026) — beep eliminado ──
@@ -2881,7 +2894,32 @@ function hablar(texto, velocidad=0.9, tono=1.1){
 }
 
 // ══ VOZ AL PASAJERO SEGÚN TARIFA Y DIRECCIÓN ══
-let direccionRuta = "ida"; // "ida"=Soacha→Funza | "vuelta"=Funza→Soacha
+let direccionRuta = "ida"; // "ida"=Soacha→Funza | "vuelta"=Funza→Soacha (SIEMPRE geográfico, uso INTERNO)
+
+// ── TRADUCCIÓN IDA/VUELTA SEGÚN ORIGEN DEL TURNO (20 sep 2026) ──
+// Confirmado con el conductor: "ida" y "vuelta" deben ser relativos
+// a DÓNDE INICIÓ su turno, no siempre "Soacha→Funza" fijo. Un
+// conductor que empieza en Villa Paul/INPEC vive su primer tramo
+// (hacia Soacha) como SU "ida", aunque geográficamente sea lo mismo
+// que la "vuelta" de un conductor que empezó en Soacha.
+//
+// direccionRuta sigue siendo SIEMPRE geográfico puro (no se toca en
+// ningún otro lugar del sistema — geocercas, anti-fraude, período
+// de gracia siguen funcionando exactamente igual). Esta función es
+// la ÚNICA traducción, usada solo para decidir QUÉ LE HABLAMOS al
+// conductor en voz — nunca para decisiones de negocio internas.
+let sentidoInicioTurno = null; // "ida" | "vuelta" — el sentido GEOGRÁFICO real del origen operativo con el que inició el turno hoy
+
+function direccionParaVoz(){
+  // Si aún no se ha confirmado ningún origen operativo hoy, se usa
+  // el valor geográfico puro como respaldo (comportamiento actual).
+  if(!sentidoInicioTurno) return direccionRuta;
+
+  // Si el sentido geográfico actual coincide con el de inicio,
+  // este es el PRIMER tramo del conductor → su "ida".
+  // Si es el sentido contrario, es su "vuelta".
+  return (direccionRuta === sentidoInicioTurno) ? "ida" : "vuelta";
+}
 let historialLatitudes = [];
 const MAX_HIST_LAT = 10;
 
@@ -3067,9 +3105,13 @@ function cambiarDireccionManual(){
   anuncioMosqueraHecho = false;
   const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
   mostrarToast(msg, "");
-  hablar(direccionRuta === "ida" ? "Modo ida" : "Modo vuelta, Funza hacia Soacha", 1.0, 1.1);
+  // ── CORRECCIÓN (20 sep 2026): la voz y el botón usan la traducción
+  // relativa al origen del turno — el toast de arriba sigue mostrando
+  // la dirección geográfica real, útil como referencia clara. ──
+  const dirVoz = direccionParaVoz();
+  hablar(dirVoz === "ida" ? "Modo ida" : "Modo vuelta", 1.0, 1.1);
   const btn = document.getElementById("btnDireccion");
-  if(btn) btn.textContent = direccionRuta === "ida" ? "🚌 IDA" : "🚌 VUELTA";
+  if(btn) btn.textContent = dirVoz === "ida" ? "🚌 IDA" : "🚌 VUELTA";
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3126,7 +3168,12 @@ function vozPagoRegistrado(precio){
   // Ahora: se congela el sentido en el instante exacto del cobro,
   // que es lo que el conductor realmente vivió — sin importar qué
   // le pase a direccionRuta en los 3 segundos siguientes.
-  const direccionAlMomentoDelCobro = direccionRuta;
+  // ── ACTUALIZADO (20 sep 2026): ahora captura la dirección ya
+  // TRADUCIDA según el origen del turno (direccionParaVoz()), no la
+  // geográfica pura — combina la corrección del 19 sep (capturar en
+  // el momento exacto del cobro) con la traducción ida/vuelta
+  // relativa a dónde inició su turno el conductor. ──
+  const direccionAlMomentoDelCobro = direccionParaVoz();
 
   // Acumular conteo por precio
   _conteosPorPrecio[precio] = (_conteosPorPrecio[precio] || 0) + 1;
@@ -3171,9 +3218,17 @@ function vozPagoRegistrado(precio){
       return;
     }
 
-    // ── R1: Cada 5 pasajeros de la misma tarifa — anuncia destino ──
+    // ── R1: Cada 5 pasajeros de la misma tarifa — recuerda el destino ──
+    // CORRECCIÓN (20 sep 2026): el propósito real de esta regla siempre
+    // fue recordar el destino cada cierto número de pasajeros de esa
+    // tarifa, como refuerzo sin repetir en cada uno — el número "5"
+    // era solo la condición interna para decidir CUÁNDO recordarlo,
+    // nunca algo que debía anunciarse en voz. Confirmado en ruta real:
+    // decir "Llevan 5 pasajeros" confundía al conductor, que lo
+    // interpretaba como el total de personas en el bus (podían ser
+    // 19 reales), no como el conteo de esa tarifa específica.
     if(conteoActual % 5 === 0){
-      hablar("Llevan " + conteoActual + " pasajeros. " + mensajeFinal, 1.0, 1.05);
+      hablar(mensajeFinal, 1.0, 1.05);
       return;
     }
 
