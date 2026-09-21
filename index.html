@@ -1923,8 +1923,31 @@ function alertaProximaGeocerca(geo, dist){
 // BASE: alerta genérica
 // PREMIUM: alerta específica por tarifa con diferencia de cobro
 function verificarPasajerosEnFrontera(geo){
-  if(direccionRuta !== "ida") return;
   const esPremium = configTurno?.planTunim === "premium";
+
+  // ── ALERTA ANTI-FRAUDE $3.000 EN VUELTA (21 sep 2026) ──
+  // Completa el patrón que ya existía para $2.300/$3.300 en IDA.
+  // $3.000 (Río Bogotá → Funza/Mosquera) es la tarifa que empieza
+  // JUSTO en este punto viniendo de Funza — si un pasajero de esta
+  // tarifa sigue a bordo DESPUÉS de cruzar G4 hacia Soacha, significa
+  // que pagó la tarifa corta pero viaja más allá de lo que le
+  // corresponde (fraude confirmado en el diseño de negocio).
+  if(direccionRuta === "vuelta"){
+    const pax3000 = pasajerosABordo.filter(p => p.precio === 3000);
+    if(pax3000.length > 0){
+      const mensaje = esPremium
+        ? ("Atención conductor. " + pax3000.length +
+           " pasajero" + (pax3000.length>1?"s":"") +
+           " de tres mil cruzando el Río Bogotá hacia Soacha. " +
+           "Su tarifa termina aquí.")
+        : ("Alerta: " + pax3000.length + " pasajeros con tarifa corta cruzando el río. Verificar pago.");
+      setTimeout(()=>{ hablar(mensaje, 0.85, 1.0); }, 500);
+      mostrarToast("🔴 " + pax3000.length + " pax $3.000 excedieron el Río Bogotá","alerta");
+    }
+    return;
+  }
+
+  if(direccionRuta !== "ida") return;
 
   if(esPremium){
     // $2.300 nunca debe cruzar G4 — debió bajar en G2
