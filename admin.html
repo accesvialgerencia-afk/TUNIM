@@ -296,7 +296,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
           <div class="f-group"><label class="f-label">Viajes por turno</label><input class="f-input" id="emp-viajes" type="number" value="3" min="1" max="10"></div>
           <div class="f-group"><label class="f-label">Meta diaria ($)</label><input class="f-input" id="emp-meta" type="number" placeholder="750000"></div>
         </div>
-        <button class="btn-primary" onclick="crearEmpresa()">✓ GUARDAR EMPRESA</button>
+        <button class="btn-primary" id="btn-guardar-empresa" onclick="crearEmpresa()">✓ GUARDAR EMPRESA</button>
         <button class="btn-secondary" onclick="toggleForm('form-empresa')">✕ CANCELAR</button>
       </div>
     </div>
@@ -370,7 +370,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
           <label class="f-label">Voz al pasajero — sentido VUELTA</label>
           <input class="f-input" id="tar-voz-vuelta" placeholder="Ej: Su tiquete va hasta Soacha. Buen viaje.">
         </div>
-        <button class="btn-primary" onclick="agregarTarifa()">✓ AGREGAR TARIFA</button>
+        <button class="btn-primary" id="btn-guardar-tarifa" onclick="agregarTarifa()">✓ AGREGAR TARIFA</button>
       </div>
     </div>
   </div>
@@ -429,7 +429,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
           <input class="f-input" id="con-placas" placeholder="TAL-866, TZT-414" style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
           <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Vehículos que puede operar dentro de la empresa</div>
         </div>
-        <button class="btn-primary" onclick="crearConductor()">✓ REGISTRAR CONDUCTOR</button>
+        <button class="btn-primary" id="btn-guardar-conductor" onclick="crearConductor()">✓ REGISTRAR CONDUCTOR</button>
         <button class="btn-secondary" onclick="toggleForm('form-conductor')">✕ CANCELAR</button>
       </div>
     </div>
@@ -832,7 +832,8 @@ function renderActivos(lista){
   const cont = document.getElementById("lista-activos");
   if(!lista.length){ cont.innerHTML='<div class="empty-state">Sin vehículos activos</div>'; return; }
   cont.innerHTML = lista.map(v => renderVehiculoCard(v,
-    `<button class="btn-suspender" onclick="suspenderVehiculo('${v.id}','${v.placa}')">⏸ SUSPENDER</button>
+    `<button class="btn-aprobar" onclick="editarVehiculo('${v.id}')">✏️ EDITAR</button>
+     <button class="btn-suspender" onclick="suspenderVehiculo('${v.id}','${v.placa}')">⏸ SUSPENDER</button>
      <button class="btn-renovar" onclick="renovarVehiculo('${v.id}','${v.placa}','${v.correo}','${v.nombres}')">🔄 RENOVAR 30D</button>`
   )).join("");
 }
@@ -900,6 +901,21 @@ async function aprobarVehiculo(id, placa, correo, nombres){
   const {db, doc, updateDoc, setDoc, serverTimestamp, addDoc, collection} = window._fb;
   const venc = new Date(); venc.setDate(venc.getDate()+30);
 
+  // ── CORRECCIÓN (20 sep 2026) — TUNIM debe funcionar para CUALQUIER
+  // empresa de transporte, no solo Autoboy. Antes, esta función
+  // asignaba "autoboy" fijo a todo vehículo aprobado, sin importar
+  // qué empresa haya escrito el propietario en registro.html — esto
+  // habría bloqueado por completo usar TUNIM con una empresa distinta.
+  // Ahora se genera el empresaId real a partir del campo "empresa"
+  // de la solicitud, con "autoboy" solo como respaldo para
+  // solicitudes viejas que no tengan ese dato. ──
+  const empresaIdReal = solicitud.empresa
+    ? solicitud.empresa.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+        .replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"")
+    : "autoboy";
+  const corridorIdReal = solicitud.corridorId || "funza-mosquera-bogota-soacha";
+
   // Generar PIN único para el propietario
   const pin = generarPIN();
 
@@ -916,8 +932,8 @@ async function aprobarVehiculo(id, placa, correo, nombres){
   await setDoc(doc(db,"vehiculos",placa),{
     placa,
     orden:            solicitud.orden||"",
-    empresaId:        "autoboy",
-    corridorId:       "funza-mosquera-bogota-soacha",
+    empresaId:        empresaIdReal,
+    corridorId:       corridorIdReal,
     estado:           "activo",
     planTunim:        "prueba",
     pinPropietario:   pin,
@@ -941,7 +957,7 @@ async function aprobarVehiculo(id, placa, correo, nombres){
         cedulaHash,
         cedulaMask,
         nombres:       solicitud.conductorNombres.trim(),
-        empresaId:     "autoboy",
+        empresaId:     empresaIdReal,
         tipo:          "titular", // ACCESVIAL puede reclasificarlo luego si es relevador
         placaTitular:  placa,
         placasAutorizadas: [placa],
@@ -997,6 +1013,47 @@ async function rechazarVehiculo(id, placa){
   cargarVehiculos();
 }
 
+// ── EDICIÓN DE VEHÍCULOS (20 sep 2026) ──
+// La PLACA no se edita aquí porque es el ID del documento en
+// vehiculos/{placa} y solicitudes_tunim — cambiarla crearía un
+// registro distinto, no corregiría el existente. Se usa prompt()
+// simple para cada campo en vez de un formulario modal nuevo,
+// ya que estos son ajustes puntuales, no un registro completo.
+async function editarVehiculo(id){
+  const {db, doc, getDoc, updateDoc, serverTimestamp} = window._fb;
+  const snap = await getDoc(doc(db,"solicitudes_tunim",id));
+  if(!snap.exists()){ toast("Vehículo no encontrado","error"); return; }
+  const v = snap.data();
+
+  const nombres = prompt("Nombres del propietario:", v.nombres||"");
+  if(nombres === null) return; // canceló
+  const correo = prompt("Correo:", v.correo||"");
+  if(correo === null) return;
+  const telefono = prompt("Teléfono:", v.telefono||"");
+  if(telefono === null) return;
+  const orden = prompt("Número de orden:", v.orden||"");
+  if(orden === null) return;
+
+  await updateDoc(doc(db,"solicitudes_tunim",id),{
+    nombres: nombres.trim(), correo: correo.trim(),
+    telefono: telefono.trim(), orden: orden.trim(),
+    actualizadoEn: serverTimestamp()
+  });
+
+  // Reflejar también en vehiculos/{placa}, si ya existe (vehículo aprobado)
+  if(v.placa){
+    const snapVeh = await getDoc(doc(db,"vehiculos",v.placa));
+    if(snapVeh.exists()){
+      await updateDoc(doc(db,"vehiculos",v.placa),{
+        orden: orden.trim(), actualizadoEn: serverTimestamp()
+      });
+    }
+  }
+
+  toast("✅ Vehículo actualizado");
+  cargarVehiculos();
+}
+
 async function suspenderVehiculo(id, placa){
   if(!confirm(`¿Suspender el vehículo ${placa}?`)) return;
   const {db, doc, updateDoc} = window._fb;
@@ -1044,12 +1101,36 @@ async function cargarEmpresas(){
       <div class="vc-info">NIT: ${e.nit||"—"} · ${e.ciudad||"—"}</div>
       <div class="vc-info">${e.correo||"—"}</div>
       <div class="vc-empresa">Viajes/turno: ${e.viajesPorTurno||3} · Meta: $${(e.metaDiaria||0).toLocaleString("es-CO")}/día</div>
+      <button class="btn-aprobar" style="margin-top:8px;width:100%" onclick="editarEmpresa('${e.id}')">✏️ EDITAR</button>
     </div>`).join("") : '<div class="empty-state">Sin empresas registradas</div>';
 
   // Poblar selects
   const opts = '<option value="">Selecciona empresa...</option>' +
     empresasCache.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join("");
   document.getElementById("sel-empresa-tarifas").innerHTML = opts;
+}
+
+// ── EDICIÓN DE EMPRESAS (20 sep 2026) — mismo patrón que conductores ──
+// El NOMBRE no se edita aquí porque genera el ID (slug) del documento.
+let empresaEditandoId = null;
+
+async function editarEmpresa(id){
+  const {db, doc, getDoc} = window._fb;
+  const snap = await getDoc(doc(db,"empresas",id));
+  if(!snap.exists()){ toast("Empresa no encontrada","error"); return; }
+  const e = snap.data();
+
+  empresaEditandoId = id;
+  document.getElementById("emp-nombre").value = e.nombre||"";
+  document.getElementById("emp-nombre").disabled = true;
+  document.getElementById("emp-nit").value = e.nit||"";
+  document.getElementById("emp-ciudad").value = e.ciudad||"";
+  document.getElementById("emp-correo").value = e.correo||"";
+  document.getElementById("emp-viajes").value = e.viajesPorTurno||3;
+  document.getElementById("emp-meta").value = e.metaDiaria||0;
+
+  document.getElementById("btn-guardar-empresa").textContent = "💾 GUARDAR CAMBIOS";
+  document.getElementById("form-empresa").style.display = "block";
 }
 
 async function crearEmpresa(){
@@ -1061,7 +1142,25 @@ async function crearEmpresa(){
   const meta   = parseInt(document.getElementById("emp-meta").value)||0;
   if(!nombre){ toast("Ingresa el nombre de la empresa","error"); return; }
 
-  // ── CORRECCIÓN (3 sep 2026) ──
+  const {db, doc, getDoc, setDoc, updateDoc, serverTimestamp} = window._fb;
+
+  // ── MODO EDICIÓN ──
+  if(empresaEditandoId){
+    await updateDoc(doc(db,"empresas",empresaEditandoId),{
+      nit, ciudad, correo, viajesPorTurno:viajes, metaDiaria:meta,
+      actualizadoEn: serverTimestamp()
+    });
+    toast("✅ Empresa actualizada");
+    empresaEditandoId = null;
+    document.getElementById("emp-nombre").disabled = false;
+    document.getElementById("btn-guardar-empresa").textContent = "✓ GUARDAR EMPRESA";
+    toggleForm("form-empresa");
+    ["emp-nombre","emp-nit","emp-ciudad","emp-correo","emp-meta"].forEach(id=>document.getElementById(id).value="");
+    cargarEmpresas();
+    return;
+  }
+
+  // ── MODO CREAR — sin cambios ──
   // Antes: addDoc() generaba un ID aleatorio ilegible (ej. "aB3xK9pQ...").
   // Pero TODO el sistema (vehículos, tarifas, conductores) referencia
   // empresaId como texto simple y legible (ej. "autoboy"), no como ID
@@ -1073,8 +1172,6 @@ async function crearEmpresa(){
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"") // quita tildes
     .replace(/[^a-z0-9]+/g,"-")                       // espacios/símbolos → guión
     .replace(/(^-|-$)/g,"");                          // sin guiones al borde
-
-  const {db, doc, getDoc, setDoc, serverTimestamp} = window._fb;
 
   const yaExiste = await getDoc(doc(db,"empresas",empresaId));
   if(yaExiste.exists()){
@@ -1118,10 +1215,41 @@ async function cargarTarifasEmpresa(){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="ti-precio">$${(t.precio||0).toLocaleString("es-CO")}</div>
+          <button class="btn-del-tarifa" onclick="editarTarifa('${t.id}')">✏️</button>
           <button class="btn-del-tarifa" onclick="eliminarTarifa('${t.id}')">🗑</button>
         </div>
       </div>`).join("") :
     '<div class="empty-state">Sin tarifas configuradas — agrega la primera</div>';
+}
+
+// ── EDICIÓN DE TARIFAS (20 sep 2026) ──
+// El NOMBRE y el PRECIO no se editan aquí porque ambos generan el
+// ID del documento (idTarifa = empresa-nombre-precio) — cambiar
+// cualquiera de los dos crearía un documento distinto, no
+// corregiría el existente. Cambiar el precio real de una tarifa es
+// una decisión de negocio distinta a "corregir un error de tipeo",
+// así que para eso se elimina y se crea de nuevo intencionalmente.
+let tarifaEditandoId = null;
+
+async function editarTarifa(id){
+  const {db, doc, getDoc} = window._fb;
+  const snap = await getDoc(doc(db,"tarifas",id));
+  if(!snap.exists()){ toast("Tarifa no encontrada","error"); return; }
+  const t = snap.data();
+
+  tarifaEditandoId = id;
+  document.getElementById("tar-nombre").value = t.nombre||"";
+  document.getElementById("tar-nombre").disabled = true;
+  document.getElementById("tar-precio").value = t.precio||"";
+  document.getElementById("tar-precio").disabled = true;
+  document.getElementById("tar-origen").value = t.geocercaOrigen||"";
+  document.getElementById("tar-destino").value = t.geocercaDestino||"";
+  document.getElementById("tar-desde").value = t.desde||"";
+  document.getElementById("tar-hasta").value = t.hasta||"";
+  document.getElementById("tar-voz-ida").value = t.vozIda||"";
+  document.getElementById("tar-voz-vuelta").value = t.vozVuelta||"";
+
+  document.getElementById("btn-guardar-tarifa").textContent = "💾 GUARDAR CAMBIOS";
 }
 
 async function agregarTarifa(){
@@ -1136,7 +1264,28 @@ async function agregarTarifa(){
   const vozVuelta = document.getElementById("tar-voz-vuelta").value.trim();
   if(!empId||!nombre||!precio){ toast("Completa todos los campos","error"); return; }
 
-  // ── CORRECCIÓN (3 sep 2026) ──
+  const {db, doc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp} = window._fb;
+
+  // ── MODO EDICIÓN: actualizar solo geocercas, desde/hasta y voz ──
+  if(tarifaEditandoId){
+    await updateDoc(doc(db,"tarifas",tarifaEditandoId),{
+      desde, hasta,
+      geocercaOrigen: origen,
+      geocercaDestino: destino,
+      vozIda, vozVuelta,
+      actualizadoEn: serverTimestamp()
+    });
+    toast("✅ Tarifa actualizada");
+    tarifaEditandoId = null;
+    document.getElementById("tar-nombre").disabled = false;
+    document.getElementById("tar-precio").disabled = false;
+    document.getElementById("btn-guardar-tarifa").textContent = "✓ AGREGAR TARIFA";
+    ["tar-nombre","tar-precio","tar-desde","tar-hasta","tar-voz-ida","tar-voz-vuelta"].forEach(id=>document.getElementById(id).value="");
+    cargarTarifasEmpresa();
+    return;
+  }
+
+  // ── MODO CREAR — sin cambios ──
   // Antes: guardaba en "tarifas_empresa" (colección que index.html
   // nunca lee) con estructura incompleta — faltaban corridorId,
   // activo y orden, campos que index.html SÍ requiere para mostrar
@@ -1144,7 +1293,6 @@ async function agregarTarifa(){
   // Funza→Fontibón $6.200, que existía en el código pero nunca
   // apareció en TUNIM por estar ausente de Firestore con esta
   // estructura correcta.
-  const {db, doc, setDoc, collection, query, where, getDocs, serverTimestamp} = window._fb;
 
   // Heredar el corridorId de una tarifa existente de la misma empresa
   // (hoy todas las empresas tienen un solo corredor operativo)
@@ -1195,6 +1343,37 @@ async function eliminarTarifa(id){
 function toggleForm(id){ const f=document.getElementById(id); f.style.display=f.style.display==="none"?"block":"none"; }
 
 // ══ CONDUCTORES — Sprint 2 ══
+// ── EDICIÓN DE CONDUCTORES (20 sep 2026) ──
+// Antes admin.html solo permitía crear/eliminar — cualquier error
+// de escritura (nombre, empresa, placas) obligaba a borrar todo el
+// registro y perder su historial. Ahora se puede corregir sin
+// perder nada. La CÉDULA nunca se edita aquí, porque genera el ID
+// del documento (cedulaHash) — cambiarla crearía una identidad
+// distinta, no editaría la existente.
+let conductorEditandoId = null; // null = modo crear | id = modo editar
+
+async function editarConductor(id){
+  const {db, doc, getDoc} = window._fb;
+  const snap = await getDoc(doc(db,"conductores",id));
+  if(!snap.exists()){ toast("Conductor no encontrado","error"); return; }
+  const c = snap.data();
+
+  conductorEditandoId = id;
+  document.getElementById("con-nombres").value = c.nombres||"";
+  document.getElementById("con-empresa").value = c.empresaId||"";
+  document.getElementById("con-tipo").value = c.tipo||"titular";
+  document.getElementById("con-placa-titular").value = c.placaTitular||"";
+  document.getElementById("con-placas").value = (c.placasAutorizadas||[]).join(", ");
+
+  // La cédula se muestra pero NO editable — es la identidad del registro
+  const campoCedula = document.getElementById("con-cedula");
+  campoCedula.value = c.cedulaMask||"(no editable)";
+  campoCedula.disabled = true;
+
+  document.getElementById("btn-guardar-conductor").textContent = "💾 GUARDAR CAMBIOS";
+  document.getElementById("form-conductor").style.display = "block";
+}
+
 async function crearConductor(){
   const nombres  = document.getElementById("con-nombres").value.trim();
   const cedula   = document.getElementById("con-cedula").value.trim();
@@ -1204,18 +1383,41 @@ async function crearConductor(){
   const placasStr= document.getElementById("con-placas").value.trim();
 
   if(!nombres){ toast("Ingresa el nombre del conductor","error"); return; }
-  if(!cedula || cedula.length < 6){ toast("Cédula inválida","error"); return; }
   if(!empresaId){ toast("Selecciona la empresa","error"); return; }
 
-  // Hash cédula — Ley 1581
-  const cedulaMask = cedula.slice(0,3)+"*".repeat(Math.max(0,cedula.length-5))+cedula.slice(-2);
-  const cedulaHash = await generarHashCedula(cedula);
-
-  // Placas autorizadas
   const placasAutorizadas = placasStr
     .split(",")
     .map(p=>p.trim().toUpperCase())
     .filter(p=>p.length >= 5);
+
+  const {db, doc, setDoc, updateDoc, serverTimestamp} = window._fb;
+
+  // ── MODO EDICIÓN: actualizar el documento existente ──
+  if(conductorEditandoId){
+    await updateDoc(doc(db,"conductores",conductorEditandoId),{
+      nombres, empresaId, tipo,
+      placaTitular: placaTit||"",
+      placasAutorizadas,
+      actualizadoEn: serverTimestamp()
+    });
+    toast("✅ Conductor actualizado");
+    conductorEditandoId = null;
+    document.getElementById("con-cedula").disabled = false;
+    document.getElementById("btn-guardar-conductor").textContent = "✓ REGISTRAR CONDUCTOR";
+    toggleForm("form-conductor");
+    ["con-nombres","con-cedula","con-placa-titular","con-placas"].forEach(id=>{
+      document.getElementById(id).value="";
+    });
+    cargarConductores();
+    return;
+  }
+
+  // ── MODO CREAR: comportamiento original, sin cambios ──
+  if(!cedula || cedula.length < 6){ toast("Cédula inválida","error"); return; }
+
+  // Hash cédula — Ley 1581
+  const cedulaMask = cedula.slice(0,3)+"*".repeat(Math.max(0,cedula.length-5))+cedula.slice(-2);
+  const cedulaHash = await generarHashCedula(cedula);
 
   // ── SPRINT 3 (1 sep 2026) — PIN de conductor ──
   // Mismo patrón exacto que pinPropietario: 4 dígitos numéricos,
@@ -1224,7 +1426,6 @@ async function crearConductor(){
   // conductor (dato no secreto) podría ver sus ingresos.
   const pinConductor = generarPIN();
 
-  const {db, doc, setDoc, serverTimestamp} = window._fb;
   await setDoc(doc(db,"conductores",cedulaHash),{
     cedulaHash,
     cedulaMask,
@@ -1291,6 +1492,7 @@ async function cargarConductores(){
       <div class="cc-empresa">${c.empresaId||"—"} ${c.placaTitular?"· Titular: "+c.placaTitular:""}</div>
       <div class="cc-placas">Placas: ${(c.placasAutorizadas||[]).join(", ")||"—"}</div>
       <div class="cc-btns">
+        <button class="btn-aprobar" onclick="editarConductor('${c.id}')">✏️ EDITAR</button>
         <button class="btn-inactivar" onclick="toggleEstadoConductor('${c.id}','${c.estado}')">
           ${c.estado==='activo'?'⏸ INACTIVAR':'▶ ACTIVAR'}
         </button>
