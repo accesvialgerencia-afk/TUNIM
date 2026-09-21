@@ -921,6 +921,8 @@ async function aprobarVehiculo(id, placa, correo, nombres){
     estado:           "activo",
     planTunim:        "prueba",
     pinPropietario:   pin,
+    correo:           correo||"",
+    nombrePropietario: nombres||"",
     fechaVencimiento: venc.toISOString(),
     aprobadoPor:      "accesvial",
     actualizadoEn:    serverTimestamp()
