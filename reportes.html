@@ -393,6 +393,70 @@ async function cargarReporte(){
         });
       }
 
+      // ── SPRINT 4 (21 sep 2026) — Rentabilidad: gastos y reparto ──
+      // Estos campos (gastos, totalGastos, neto, propietario, conductor)
+      // ya se guardaban en Firestore desde el 21 sep vía
+      // guardarLiquidacionFirebase(), pero ninguna pantalla los mostraba
+      // — el dato viajaba a la nube sin que nadie pudiera consultarlo.
+      const NOMBRES_GASTOS = {acpm:"ACPM",desayuno:"Desayuno",almuerzo:"Almuerzo",timbres:"Timbres",parqueo:"Parqueo",otros:"Otros"};
+      let totalGastosPeriodo = 0, totalNetoPeriodo = 0, totalPropietarioPeriodo = 0, totalConductorPeriodo = 0;
+      const gastosPorCategoria = {};
+      let hayDatosRentabilidad = false;
+
+      dias.forEach(d=>{
+        if(typeof d.totalGastos === "number"){
+          hayDatosRentabilidad = true;
+          totalGastosPeriodo += d.totalGastos||0;
+          totalNetoPeriodo += d.neto||0;
+          totalPropietarioPeriodo += d.propietario||0;
+          totalConductorPeriodo += d.conductor||0;
+          if(d.gastos){
+            Object.keys(d.gastos).forEach(cat=>{
+              gastosPorCategoria[cat] = (gastosPorCategoria[cat]||0) + (d.gastos[cat]||0);
+            });
+          }
+        }
+      });
+
+      if(hayDatosRentabilidad){
+        html += `<div class="seccion-titulo">Rentabilidad del período</div>`;
+        html += `
+          <div class="dia-card">
+            <div><div class="dia-fecha">Recaudo total</div></div>
+            <div class="dia-monto" style="color:var(--ambar)">$${Math.round(totalRecaudo/1000)}k</div>
+          </div>
+          <div class="dia-card">
+            <div><div class="dia-fecha">Total gastos</div></div>
+            <div class="dia-monto" style="color:var(--rojo)">$${Math.round(totalGastosPeriodo/1000)}k</div>
+          </div>
+          <div class="dia-card">
+            <div><div class="dia-fecha">Neto (recaudo − gastos)</div></div>
+            <div class="dia-monto" style="color:var(--verde)">$${Math.round(totalNetoPeriodo/1000)}k</div>
+          </div>
+          <div class="dia-card">
+            <div><div class="dia-fecha">Reparto — Propietario</div></div>
+            <div class="dia-monto">$${Math.round(totalPropietarioPeriodo/1000)}k</div>
+          </div>
+          <div class="dia-card">
+            <div><div class="dia-fecha">Reparto — Conductor</div></div>
+            <div class="dia-monto">$${Math.round(totalConductorPeriodo/1000)}k</div>
+          </div>
+        `;
+
+        const categoriasConGasto = Object.entries(gastosPorCategoria).filter(([_,v])=>v>0);
+        if(categoriasConGasto.length){
+          html += `<div class="seccion-titulo">Gastos por categoría</div>`;
+          categoriasConGasto.sort((a,b)=>b[1]-a[1]).forEach(([cat,valor])=>{
+            html += `
+              <div class="dia-card">
+                <div><div class="dia-fecha">${NOMBRES_GASTOS[cat]||cat}</div></div>
+                <div class="dia-monto" style="color:var(--muted)">$${valor.toLocaleString("es-CO")}</div>
+              </div>
+            `;
+          });
+        }
+      }
+
       html += `<div class="seccion-titulo">Detalle por día</div>`;
       dias.forEach(d => {
         const meta = 700000;
