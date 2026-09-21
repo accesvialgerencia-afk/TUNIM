@@ -2398,6 +2398,14 @@ async function sincronizarConfigFirebase(){
       placa:configTurno.placa,
       cedulaConductor:configTurno.cedula||"",
       nombreConductor:configTurno.nombreConductor||"",
+      // ── SEGURIDAD (21 sep 2026) — UID del creador del turno ──
+      // Necesario para que las reglas de Firestore puedan verificar
+      // que SOLO el dispositivo/sesión que inició este turno puede
+      // escribir pasajeros en él — antes cualquier usuario autenticado
+      // (aunque fuera anónimo y de otro dispositivo) podía escribir
+      // en pasajeros/ con solo adivinar el idTurno (predecible:
+      // placa+cédula+fecha), sin ninguna verificación de identidad real.
+      uidConductor: window._fb?.auth?.currentUser?.uid || "",
       empresa:configTurno.empresa||"Autoboy",
       corredor:configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
       fecha:configTurno.fechaInicio,
@@ -2450,6 +2458,12 @@ async function guardarPasajeroFirebase(reg){
       idTurno: configTurno.idTurno || "",
       cedulaConductor: configTurno.cedula || "",
       nombreConductor: configTurno.nombreConductor || "",
+      // ── SEGURIDAD (21 sep 2026) ──
+      // El UID de quien realmente escribe este documento — la regla
+      // de Firestore comparará esto contra el uidConductor guardado
+      // en turnos_activos/{idTurno}, así solo el dispositivo que
+      // inició el turno puede seguir registrando pasajeros en él.
+      uidCreador: window._fb?.auth?.currentUser?.uid || "",
       registradoEn: serverTimestamp()
     });
 
@@ -3498,6 +3512,9 @@ async function persistirEstadoTurno(){
       placa:             configTurno.placa,
       cedulaConductor:   configTurno.cedula||"",
       nombreConductor:   configTurno.nombreConductor||"",
+      // ── SEGURIDAD (21 sep 2026) — ver nota completa en el otro punto
+      // de creación de turnos_activos, más arriba en este archivo. ──
+      uidConductor: window._fb?.auth?.currentUser?.uid || "",
       empresa:           configTurno.empresa||"Autoboy",
       corredor:          configTurno.corredor||"Funza-Mosquera-Bogotá-Soacha",
       fecha:             configTurno.fechaInicio,
