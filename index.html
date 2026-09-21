@@ -24,7 +24,14 @@
 
 <!-- ══ EMAILJS SDK ══ -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script>emailjs.init("CF4qcrUm2UKLzWy8");</script>
+<script>emailjs.init("CF4qcrjUm2UKLzWy8");</script>
+<!-- ── CORRECCIÓN CRÍTICA (21 sep 2026) ──
+La Public Key tenía un error de una sola letra faltante
+("CF4qcrUm2UKLzWy8" en vez de "CF4qcrjUm2UKLzWy8") — esto causaba
+el error "The Public Key is invalid" de EmailJS, impidiendo TODO
+envío de correo sin importar que el servicio y la plantilla fueran
+correctos. Corregida usando la clave real y verificada de
+registro.html, que sí funciona. -->
 
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
@@ -2200,7 +2207,15 @@ async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
       const data=snap.data();
       if(data.conteos&&data.conteos.length===RUTAS.length){
         estado.conteos=data.conteos;
-        estado.conteosViaje=data.conteosViaje||[new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0),new Array(RUTAS.length).fill(0)];
+        // ── CORRECCIÓN (21 sep 2026): reconstruir arreglo anidado en
+        // memoria a partir de los 3 campos separados que sí acepta
+        // Firestore. Mantiene compatibilidad con data.conteosViaje
+        // (formato viejo) por si el documento aún no fue actualizado. ──
+        estado.conteosViaje = data.conteosViaje || [
+          data.conteosViaje1 || new Array(RUTAS.length).fill(0),
+          data.conteosViaje2 || new Array(RUTAS.length).fill(0),
+          data.conteosViaje3 || new Array(RUTAS.length).fill(0)
+        ];
         estado.historial=data.historial||[];
         estado.diaActual=fecha;
         viajeActual=data.viajeActual||1;
@@ -2351,7 +2366,10 @@ async function sincronizarConfigFirebase(){
       horaInicio:configTurno.horaInicio,
       estadoTurno:"Activo",
       conteos:estado.conteos,
-      conteosViaje:estado.conteosViaje,
+      // ── MISMA CORRECCIÓN (21 sep 2026) — ver persistirEstadoTurno() ──
+      conteosViaje1:estado.conteosViaje[0],
+      conteosViaje2:estado.conteosViaje[1],
+      conteosViaje3:estado.conteosViaje[2],
       historial:estado.historial.slice(0,50),
       viajeActual:viajeActual,
       origenOperativo: (typeof origenOperativo!=="undefined"&&origenOperativo)?origenOperativo.nombre:"",
@@ -2874,6 +2892,22 @@ let cambiosDireccionPendientes = 0;
 const CONFIRMACIONES_REQUERIDAS = 3; // evita cambios por ruido puntual
 
 function detectarDireccion(lat){
+  // ── PERÍODO DE GRACIA (20 sep 2026) ──
+  // MISMA regla ya aplicada a detectarDireccionPorTrazado() el 19 sep:
+  // si una geocerca operativa confirmó la dirección hace menos de
+  // MINUTOS_GRACIA_GEOCERCA_OPERATIVA, esta función tampoco debe
+  // competir por cambiar direccionRuta. Confirmado en ruta real (20
+  // sep): esta función VIEJA por latitud seguía revirtiendo "vuelta"
+  // a "ida" sin protección, porque el período de gracia del 19 sep
+  // solo se había aplicado a la función nueva por trazado, dejando
+  // esta como el punto de fallo activo restante.
+  if(momentoUltimaGeocercaOperativa){
+    const minutosDesdeGeocerca = (Date.now() - momentoUltimaGeocercaOperativa) / 60000;
+    if(minutosDesdeGeocerca < MINUTOS_GRACIA_GEOCERCA_OPERATIVA){
+      return; // en período de gracia — no evaluar por latitud todavía
+    }
+  }
+
   historialLatitudes.push(lat);
   if(historialLatitudes.length > MAX_HIST_LAT){
     historialLatitudes.shift();
@@ -3114,11 +3148,23 @@ function vozPagoRegistrado(precio){
       : "";
     const mensajeFinal = vozPersonalizada || vozDir[precio] || "Buen viaje.";
 
-    // ── R3: $7.000 y $8.000 — siempre anuncia con conteo total hacia Funza ──
+    // ── R3: $7.000 y $8.000 — anuncia con conteo total, PERO cada uno ──
+    // con su destino real correcto en sentido vuelta.
+    // CORRECCIÓN (20 sep 2026): antes ambas tarifas compartían el mismo
+    // destino genérico "Soacha" en vuelta — confirmado como incorrecto
+    // en ruta real: $8.000 en vuelta SÍ va hasta Soacha (tarifa larga
+    // completa), pero $7.000 en vuelta va hasta Bogotá/cerca de Bosa
+    // (tramo más corto) — el anuncio decía "para Soacha" y en la misma
+    // frase "su tiquete va hasta Bogotá", una contradicción evidente.
     if(precio === 8000 || precio === 7000){
       const totalFunza = (estado.conteos[getRutas().findIndex(r=>r.precio===8000)]||0)
                        + (estado.conteos[getRutas().findIndex(r=>r.precio===7000)]||0);
-      const destino = dir === "vuelta" ? "Soacha" : "Funza o Mosquera";
+      let destino;
+      if(dir === "vuelta"){
+        destino = precio === 7000 ? "Bogotá" : "Soacha";
+      } else {
+        destino = "Funza o Mosquera";
+      }
       hablar("Van " + totalFunza + " pasajeros para " + destino + ". " + mensajeFinal, 1.0, 1.05);
       return;
     }
@@ -3235,7 +3281,14 @@ function enviarReportePorCorreo(){
 
   mostrarToast("Enviando reporte...","");
 
-  emailjs.send("service_7k8ve4a","template_5dk2xxk",{
+  // ── CORRECCIÓN CRÍTICA (20 sep 2026) ──
+  // El ID de servicio "service_7k8ve4a" NO EXISTE en la cuenta real
+  // de EmailJS (confirmado revisando directamente en emailjs.com) —
+  // por eso el reporte diario NUNCA pudo enviarse por correo desde
+  // que se implementó. Se corrige al único servicio real y ya
+  // verificado en la cuenta: "service_mext8fi" (el mismo que usa
+  // registro.html, confirmado funcional con prueba real de envío).
+  emailjs.send("service_mext8fi","template_5dk2xxk",{
     fecha: hoy,
     placa: placa,
     reporte: reporte
@@ -3365,7 +3418,18 @@ async function persistirEstadoTurno(){
       destinoOperativo:  destinoOperativo?.nombre||"",
       rutaOperativa:     configTurno.rutaOperativa||"",
       conteos:           estado.conteos,
-      conteosViaje:      estado.conteosViaje,
+      // ── CORRECCIÓN CRÍTICA (21 sep 2026) ──
+      // Firestore RECHAZA arreglos anidados (arreglo dentro de arreglo)
+      // con el error "Nested arrays are not supported". conteosViaje
+      // era exactamente eso: [[...],[...],[...]] — un arreglo de 3
+      // arreglos. Confirmado en consola real que esto hacía fallar
+      // SILENCIOSAMENTE cada sincronización con Firebase desde que
+      // se implementó, contribuyendo a inconsistencias entre
+      // dispositivos (el caso de 218 vs 41 pasajeros). Se separa en
+      // 3 campos individuales, cada uno un arreglo simple (sí válido).
+      conteosViaje1:     estado.conteosViaje[0],
+      conteosViaje2:     estado.conteosViaje[1],
+      conteosViaje3:     estado.conteosViaje[2],
       historial:         estado.historial.slice(0,50),
       viajeActual:       viajeActual,
       totalPasajeros:    estado.conteos.reduce((a,b)=>a+b,0),
