@@ -871,9 +871,9 @@ const RUTAS=[
   {nombre:"Bogotá → Funza/Mosquera",    desde:"Bogotá",  hasta:"Funza",   precio:7000, geocercaDestino:"G7"},
   {nombre:"Calle 13 con Cali → Funza/Mosquera", desde:"Calle 13 con Cali", hasta:"Funza/Mosquera", precio:6200, geocercaDestino:"G7"},
   // ── TRAYECTO CORTO POST-PEAJE ──
-  {nombre:"Río Bogotá → Funza/Mosq.",   desde:"Río Bog", hasta:"Funza",   precio:3000, geocercaDestino:"G8"},
+  {nombre:"Río Bogotá → Funza/Mosq.",   desde:"Río Bog", hasta:"Funza",   precio:3000, geocercaDestino:"G7"},
   // ── RUTA ESPECIAL PLANADAS ──
-  {nombre:"Planadas → Portal Dorado",   desde:"Planadas",hasta:"Bogotá",  precio:3400, geocercaDestino:"G10"},
+  {nombre:"Planadas → Portal Dorado",   desde:"Planadas",hasta:"Portal Dorado",  precio:3400, geocercaDestino:"G10"},
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1461,7 +1461,19 @@ const GEOCERCAS_OPERATIVAS = [
   {
     id: "inpec",
     nombre: "INPEC",
-    lat: 4.7349630, lng: -74.1860322, radio: 400,
+    // ── CORRECCIÓN (21 sep 2026) ──
+    // Coordenada actualizada con la medición real confirmada en
+    // campo — la anterior (4.7349630,-74.1860322) tenía ~259m de
+    // error respecto a la ubicación real, dejando esta geocerca
+    // fuera de su propio radio de 400m en algunas pasadas reales,
+    // lo que retrasaba la confirmación del origen operativo y
+    // dejaba una ventana donde direccionRuta aún no se había
+    // sincronizado a "vuelta" — causa probable del bug reportado
+    // en ruta real (comando de voz de $7.000 diciendo "hasta Funza"
+    // en vez de "hasta Bogotá" justo saliendo de INPEC).
+    // Radio ampliado de 400m a 500m como margen de seguridad
+    // adicional, dado el historial de esta geocerca específica.
+    lat: 4.735205, lng: -74.183712, radio: 500,
     tipo: "origen_y_destino",
     sentido: "vuelta",
     destinosEsperados: ["llanos", "ciudad_verde"],
@@ -1753,8 +1765,13 @@ function alEntrarGeocercaOperativa(geo){
     mostrarToast("🏁 Llegada: " + geo.nombre + " (" + duracion + " min)", "");
     console.log("🏁 Destino registrado:", geo.nombre, "| Duración:", duracion, "min");
     // Voz al conductor
+    // ── CORRECCIÓN (21 sep 2026) — recorte preventivo bajo 5s ──
+    // Este mensaje estaba cerca del límite técnico (Chrome pausa
+    // música en vez de bajar volumen si supera 5 segundos) — se
+    // quita "completado" (redundante con "Llegada") como margen
+    // de seguridad adicional.
     setTimeout(()=>hablar(
-      "Llegada a "+geo.nombre+". Recorrido completado en "+duracion+" minutos. "+
+      "Llegada a "+geo.nombre+". "+duracion+" minutos. "+
       (duracion <= 28 ? "Excelente tiempo." : ""),
       1.0, 1.1
     ), 500);
@@ -3243,15 +3260,21 @@ function vozPagoRegistrado(precio){
     // (tramo más corto) — el anuncio decía "para Soacha" y en la misma
     // frase "su tiquete va hasta Bogotá", una contradicción evidente.
     if(precio === 8000 || precio === 7000){
-      const totalFunza = (estado.conteos[getRutas().findIndex(r=>r.precio===8000)]||0)
-                       + (estado.conteos[getRutas().findIndex(r=>r.precio===7000)]||0);
       let destino;
       if(dir === "vuelta"){
         destino = precio === 7000 ? "Bogotá" : "Soacha";
       } else {
         destino = "Funza o Mosquera";
       }
-      hablar("Van " + totalFunza + " pasajeros para " + destino + ". " + mensajeFinal, 1.0, 1.05);
+      // ── CORRECCIÓN (21 sep 2026) — número de conteo eliminado ──
+      // Misma lección del 7 sep 2026 (regla 'cada 5 pasajeros'):
+      // decir un número aquí ('Van 3 para...') puede confundirse
+      // con el total real de personas a bordo, cuando en realidad
+      // solo cuenta esta tarifa específica ($7.000+$8.000 juntas).
+      // Además, quitar el conteo acorta el mensaje de forma natural,
+      // ayudando también a mantenerlo bajo el límite técnico de 5s
+      // que activa "ducking" en vez de pausar la música.
+      hablar("Su tiquete va hasta " + destino + ". Buen viaje.", 1.0, 1.05);
       return;
     }
 
