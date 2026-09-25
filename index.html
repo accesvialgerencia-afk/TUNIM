@@ -1531,6 +1531,7 @@ const RADIO_TRAZADO = 300;
 let indiceTrazadoActual = 0;
 let sentidoTrazadoActual = null; // "ida" | "vuelta" | null (aún sin determinar)
 let anuncioMosqueraHecho = false; // evita repetir el anuncio de llegada varias veces por viaje
+let avisoZonaFrancaHecho = false; // evita repetir el mensaje de organización de pasajeros varias veces por viaje
 
 // ── PERÍODO DE GRACIA EN GEOCERCAS OPERATIVAS (19 sep 2026) ──
 // Al detenerse en una de las 5 geocercas operativas (San Humberto,
@@ -1695,6 +1696,16 @@ function alEntrarGeocercaOperativa(geo){
     // Se guarda UNA sola vez, la primera geocerca operativa del día,
     // para poder traducir correctamente ida/vuelta en los mensajes
     // de voz durante todo el turno (ver direccionParaVoz() arriba).
+    //
+    // ── NOTA DE AUDITORÍA (24 sep 2026) ──
+    // Se intentó "corregir" esto para que se actualizara en cada
+    // origen — ERROR conceptual detectado y revertido en la misma
+    // sesión: sentidoInicioTurno es la referencia FIJA del primer
+    // tramo del día, necesaria para que direccionParaVoz() compare
+    // correctamente "¿coincide con mi inicio (ida) o es lo contrario
+    // (vuelta)?". La causa real del bug de Ciudad Verde→Villa Paul
+    // estaba en otro lugar: direccionRuta nunca se sincronizaba en
+    // el bloque de DESTINO — corregido ahí, no aquí.
     if(!sentidoInicioTurno && geo.sentido){
       sentidoInicioTurno = geo.sentido;
     }
@@ -1752,6 +1763,36 @@ function alEntrarGeocercaOperativa(geo){
   if((geo.tipo === "origen_y_destino" || geo.tipo === "destino") && origenOperativo){
     destinoOperativo = geo;
     horaDestinoGPS = hora;
+
+    // ── CORRECCIÓN CRÍTICA DE RAÍZ #2 (24 sep 2026) ──
+    // Encontrada en auditoría exhaustiva: geocercas tipo
+    // "origen_y_destino" (Villa Paul, INPEC) entran por ESTE bloque
+    // de "destino" en su primer cruce del día (porque origenOperativo
+    // YA EXISTE del tramo anterior) — nunca por el bloque de "origen"
+    // de arriba. Sin sincronizar direccionRuta AQUÍ, el sistema seguía
+    // pensando que ibas en el sentido del tramo anterior durante todo
+    // el regreso.
+    //
+    // IMPORTANTE — auto-corrección durante la misma auditoría: la
+    // primera versión de este bloque también reasignaba
+    // sentidoInicioTurno aquí, pero eso era INCORRECTO — esa variable
+    // representa el sentido del PRIMER origen absoluto del turno
+    // (Ciudad Verde, "ida") y debe permanecer FIJA todo el día para
+    // que direccionParaVoz() pueda comparar correctamente "¿el sentido
+    // actual coincide con mi primer origen, o es mi tramo de vuelta?".
+    // Sobrescribirla aquí la igualaba siempre a direccionRuta,
+    // haciendo que direccionParaVoz() devolviera "ida" siempre,
+    // justo lo opuesto a lo que se buscaba corregir.
+    if(geo.sentido){
+      momentoUltimaGeocercaOperativa = Date.now();
+      if(geo.sentido !== direccionRuta){
+        direccionRuta = geo.sentido;
+        historialLatitudes = [];
+        cambiosDireccionPendientes = 0;
+        console.log("🧭 Dirección sincronizada por geocerca DESTINO:", geo.sentido);
+      }
+    }
+
     // Calcular duración del recorrido
     const duracion = calcularDuracionMinutos(horaOrigenGPS, hora);
     // Actualizar configTurno con destino real
@@ -1778,15 +1819,40 @@ function alEntrarGeocercaOperativa(geo){
     actualizarIndicadorRuta();
     // Guardar recorrido en Firebase
     guardarRecorridoOperativoFirebase(duracion);
-    // Preparar para el siguiente viaje — reset tras 60 segundos
+    // ── CORRECCIÓN (24 sep 2026) — reducido de 60s a 15s ──
+    // El retraso de 60s ya no es necesario con la corrección de raíz
+    // de arriba: como sentidoInicioTurno ahora se actualiza
+    // correctamente en CADA nuevo origen (no solo el primero del
+    // día), esperar tanto tiempo solo retrasaba innecesariamente que
+    // el conductor recibiera comandos de voz correctos en su
+    // siguiente tramo. 15s sigue dando margen contra una lectura GPS
+    // residual inmediata, sin la demora excesiva anterior.
     setTimeout(()=>{
+      // ── CORRECCIÓN ADICIONAL (24 sep 2026) — encontrada en auditoría ──
+      // geocercasOperativasActivas es la bandera que REALMENTE decide
+      // si alEntrarGeocercaOperativa() vuelve a dispararse (ver el
+      // "Motor geocercas operativas" que llama a esta función) — es
+      // DISTINTA de origenOperativo. El .clear() de abajo YA incluye
+      // esta geocerca específica (geo.id) — confirmado que es
+      // suficiente y más completo que borrar solo una entrada, porque
+      // también limpia cualquier otra geocerca que pudiera seguir
+      // marcada por solapamiento de radios. Sin este .clear() aquí,
+      // si el conductor permanece FÍSICAMENTE DETENIDO dentro del
+      // mismo radio (paradero real), el sistema NUNCA volvería a
+      // reconocer la geocerca como "nueva entrada" — dejando la
+      // corrección de raíz de sentidoInicioTurno sin efecto real en
+      // el caso más común: conductor parado esperando su turno.
       origenOperativo = null;
       destinoOperativo = null;
       horaOrigenGPS = null;
       horaDestinoGPS = null;
       geocercasOperativasActivas.clear();
+      // Reset del trazado también aquí — consistencia con los demás
+      // puntos de cambio de tramo (setViaje, cambiarDireccionManual)
+      indiceTrazadoActual = 0;
+      sentidoTrazadoActual = null;
       console.log("🔄 Sistema operativo listo para siguiente viaje");
-    }, 60000);
+    }, 15000);
     return;
   }
 }
@@ -1900,6 +1966,20 @@ function alEntrarGeocerca(geo, dist){
     setTimeout(()=>hablar(vozMsg, 1.0, 1.1), 400);
   }
 
+  // ── MENSAJE DE ORGANIZACIÓN DE PASAJEROS (24 sep 2026) ──
+  // Solicitado por el conductor: pedir a los pasajeros que ocupen
+  // bien el pasillo, con respeto pero contundencia. Mensaje SEPARADO
+  // del de tarifa (no combinado) para mantener cada uno bajo el
+  // límite de 5 segundos que activa "ducking" en vez de pausar
+  // música. Suena 2.5s después del mensaje de tarifa, dando tiempo
+  // a que termine antes de empezar el siguiente.
+  if(geo.codigo === "G3" && direccionParaVoz() === "ida"){
+    setTimeout(()=>hablar(
+      "Por favor, avancen hacia el pasillo para que suban más pasajeros.",
+      1.0, 1.05
+    ), 2900);
+  }
+
   // Acciones base — todos los planes
   if(geo.esDestino && direccionRuta==="ida") notificarDescensoMasivo(geo);
   if(geo.codigo==="G1" && direccionRuta==="vuelta") notificarDescensoMasivo(geo);
@@ -1930,7 +2010,18 @@ function alertaProximaGeocerca(geo, dist){
         hablar(geo.nombre + ". Próxima parada.", 1.0, 1.1);
       }, 500);
     }
-    setTimeout(()=> alertasProximidad.delete(key), 60000);
+    // ── CORRECCIÓN (23 sep 2026) ──
+    // Antes: setTimeout(()=> alertasProximidad.delete(key), 60000);
+    // Esto "olvidaba" la alerta cada 60 segundos, permitiendo que se
+    // repitiera si el bus seguía dentro del radio de proximidad por
+    // más tiempo (confirmado en ruta real: trancón en Av. Primera de
+    // Mayo hizo sonar "Próxima parada" 3 veces seguidas). Reportado
+    // como lógicamente incoherente: si el mensaje avisa que se acerca
+    // la parada, repetirlo mientras el bus avanza (aunque sea lento)
+    // no tiene sentido — cada repetición debería estar MÁS cerca, no
+    // en el mismo punto. Ahora suena UNA sola vez por geocerca en
+    // todo el trayecto; alertasProximidad se limpia naturalmente al
+    // cambiar de viaje/dirección, igual que pasajerosABordo.
   }
 }
 
@@ -2073,6 +2164,7 @@ function notificarDescensoMasivo(geo){
   indiceTrazadoActual = 0;
   sentidoTrazadoActual = null;
   anuncioMosqueraHecho = false;
+  avisoZonaFrancaHecho = false;
 }
 
 // Guardar evento de geocerca en Firebase
@@ -2579,7 +2671,20 @@ let estado=cargarEstado();
 let viajeActual=estado.viajeActual||1;
 
 function diaKey(d=new Date()){
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  // ── CORRECCIÓN CRÍTICA (23 sep 2026) ──
+  // Antes: usaba la fecha del dispositivo tal cual, confiando en su
+  // configuración de zona horaria (aunque fuera "automática"). Esto
+  // podía causar que TUNIM calculara mal el día si el dispositivo
+  // detectaba una zona horaria incorrecta (GPS impreciso, red celular
+  // sin datos claros de ubicación) — confirmado en campo: el sistema
+  // cambió de fecha a las 9pm hora Colombia, mucho antes de la
+  // medianoche real. Ahora SIEMPRE fuerza Colombia UTC-5, igual que
+  // ya hacía verificarRecordatorioCierre() — las dos funciones deben
+  // estar de acuerdo sobre "qué día es hoy", nunca calcularlo cada
+  // una a su manera.
+  const utc = d.getTime() + d.getTimezoneOffset()*60000;
+  const colombia = new Date(utc - 5*3600000);
+  return colombia.getFullYear()+"-"+String(colombia.getMonth()+1).padStart(2,"0")+"-"+String(colombia.getDate()).padStart(2,"0");
 }
 
 function estadoDefault(){
@@ -2713,6 +2818,14 @@ function mostrarModalConfirmarCierre(){
     liquidarDia(estado);
     estado=estadoDefault();
     viajeActual=1;
+    // ── CORRECCIÓN CRÍTICA (23 sep 2026) — ver nota completa en
+    // confirmarNuevoTurno(), misma lógica aplicada aquí. ──
+    if(configTurno && configTurno.placa){
+      const hoyReal = diaKey();
+      configTurno.fechaInicio = hoyReal;
+      configTurno.idTurno = generarIdTurno(configTurno.placa, configTurno.cedula||"0", hoyReal);
+      try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(configTurno)); }catch(e){}
+    }
     guardarEstado();
     actualizarUI();
     mostrarToast("📅 Turno anterior liquidado — turno nuevo iniciado","");
@@ -2744,6 +2857,7 @@ function setViaje(n){
     indiceTrazadoActual = 0;
     sentidoTrazadoActual = null;
     anuncioMosqueraHecho = false;
+    avisoZonaFrancaHecho = false;
   }
   actualizarUI();guardarEstado();
   if(n>anterior) vozIniciarViaje(n);
@@ -3052,6 +3166,50 @@ function distanciaMetros(lat1, lng1, lat2, lng2){
 }
 
 function detectarDireccionPorTrazado(lat, lng){
+  // ── PUNTO DE ALTA CONFIANZA — ROMBO LA MESA (24 sep 2026) ──
+  // Coordenada confirmada en campo el 20-sep, con CERTEZA DE NEGOCIO
+  // del 100% aportada por el conductor: cruzar este punto SIEMPRE
+  // significa sentido VUELTA (hacia Soacha), sin ninguna ambigüedad
+  // posible — a diferencia de los demás puntos de TRAZADO_VUELTA
+  // (nivel 2, solo respaldo débil), este punto recibe tratamiento
+  // de AUTORIDAD REFORZADA, equivalente a una geocerca operativa:
+  // confirma la dirección de inmediato Y activa su propio período
+  // de gracia de 5 minutos — sin tocar sentidoInicioTurno (esa
+  // variable permanece FIJA todo el día, lección aprendida hoy).
+  const ROMBO_LA_MESA = { lat: 4.7024406, lng: -74.2347891 };
+  const distRomboLaMesa = distanciaMetros(lat, lng, ROMBO_LA_MESA.lat, ROMBO_LA_MESA.lng);
+  if(distRomboLaMesa <= RADIO_TRAZADO){
+    momentoUltimaGeocercaOperativa = Date.now();
+    if(direccionRuta !== "vuelta"){
+      direccionRuta = "vuelta";
+      historialLatitudes = [];
+      cambiosDireccionPendientes = 0;
+      console.log("🧭 Dirección CONFIRMADA por punto de alta confianza: Rombo La Mesa → vuelta");
+      auditLog("DIRECCION_ROMBO_LA_MESA","Confirmado sentido vuelta con certeza de negocio","info");
+    }
+  }
+
+  // ── MENSAJE DE ORGANIZACIÓN DE PASAJEROS — ZONA FRANCA (24 sep 2026) ──
+  // Solicitado por el conductor: mismo mensaje de G3, ahora en sentido
+  // VUELTA, usando el punto real "Zona Franca" ya capturado en
+  // TRAZADO_VUELTA. Es un punto de TRAZADO puro (nivel 2, solo
+  // referencia) — NO se le da autoridad sobre la dirección, a
+  // diferencia de Rombo La Mesa, porque su único propósito aquí es
+  // el aviso a pasajeros, no confirmar sentido. Se dispara UNA sola
+  // vez por viaje, igual que el anuncio de Mosquera.
+  const idxZonaFranca = TRAZADO_VUELTA.findIndex(p => p.nombre === "Zona Franca");
+  if(idxZonaFranca >= 0 && !avisoZonaFrancaHecho){
+    const distZonaFranca = distanciaMetros(lat, lng, TRAZADO_VUELTA[idxZonaFranca].lat, TRAZADO_VUELTA[idxZonaFranca].lng);
+    if(distZonaFranca <= RADIO_TRAZADO){
+      avisoZonaFrancaHecho = true;
+      setTimeout(()=>hablar(
+        "Por favor, avancen hacia el pasillo para que suban más pasajeros.",
+        1.0, 1.05
+      ), 400);
+      auditLog("AVISO_ORGANIZACION_ZONA_FRANCA","Punto: Zona Franca","info");
+    }
+  }
+
   // ── ANUNCIO DE LLEGADA A MOSQUERA (19 sep 2026) ──
   // Usa el punto real "Entrada Parque Mosquera" del trazado de IDA
   // (ya capturado en ruta, no una geocerca nueva). Se dispara UNA
@@ -3157,6 +3315,20 @@ function cambiarDireccionManual(){
   sentidoTrazadoActual = direccionRuta;
   indiceTrazadoActual = 0;
   anuncioMosqueraHecho = false;
+  avisoZonaFrancaHecho = false;
+  // ── CORRECCIÓN CRÍTICA (24 sep 2026) ──
+  // Antes: el botón manual sincronizaba sentidoTrazadoActual, pero
+  // NUNCA activaba el período de gracia de 5 minutos — esa protección
+  // solo se activaba al confirmar una geocerca OPERATIVA. Esto dejaba
+  // la decisión MANUAL del conductor sin ninguna defensa: en el
+  // siguiente ciclo GPS (segundos después), detectarDireccionPorTrazado()
+  // o detectarDireccion() podían revertirla sin aviso, especialmente
+  // cerca de puntos ambiguos compartidos entre ambos trazados (ej.
+  // Río Bogotá). Confirmado en ruta real: el conductor tocaba "VUELTA"
+  // y el botón volvía a "IDA" por sí solo, mezclando los comandos de
+  // voz. Ahora, tocar el botón tiene la MISMA autoridad y protección
+  // que confirmar una geocerca operativa — 5 minutos de gracia.
+  momentoUltimaGeocercaOperativa = Date.now();
   const msg = direccionRuta === "ida" ? "🚌 Modo: Soacha → Funza" : "🚌 Modo: Funza → Soacha";
   mostrarToast(msg, "");
   // ── CORRECCIÓN (20 sep 2026): la voz y el botón usan la traducción
@@ -3848,6 +4020,23 @@ function formatFecha(key){
 function confirmarNuevoTurno(){
   if(confirm("¿Iniciar nuevo turno? El día actual se guardará en el historial.")){
     liquidarDia(estado);estado=estadoDefault();viajeActual=1;
+    // ── CORRECCIÓN CRÍTICA (23 sep 2026) ──
+    // liquidarDia() YA guardó de forma segura todos los pasajeros
+    // (en pasajeros/, desde que se marcaron) y el resumen del día
+    // (en liquidaciones/) — esto NO se toca ni se repite aquí.
+    // Lo que faltaba: configTurno.fechaInicio/idTurno seguían con
+    // la fecha del día que se está cerrando, así que el PRÓXIMO
+    // pasajero marcado quedaba asociado al turno VIEJO. Ahora se
+    // actualiza a la fecha real de HOY (con la corrección de
+    // diaKey() de hoy mismo), sin pedir el modal de nuevo — el
+    // conductor sigue trabajando sin interrupción, pero cada
+    // pasajero nuevo queda correctamente fechado.
+    if(configTurno && configTurno.placa){
+      const hoyReal = diaKey();
+      configTurno.fechaInicio = hoyReal;
+      configTurno.idTurno = generarIdTurno(configTurno.placa, configTurno.cedula||"0", hoyReal);
+      try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(configTurno)); }catch(e){}
+    }
     // Reset completo del sistema operativo
     origenOperativo = null;
     destinoOperativo = null;
