@@ -2369,7 +2369,26 @@ async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
         // Restaurar también origen/destino operativo si existían
         if(data.origenOperativo){
           const geoOrigen = GEOCERCAS_OPERATIVAS.find(g=>g.nombre===data.origenOperativo);
-          if(geoOrigen){ origenOperativo = geoOrigen; geocercasOperativasActivas.add(geoOrigen.id); }
+          if(geoOrigen){
+            origenOperativo = geoOrigen;
+            geocercasOperativasActivas.add(geoOrigen.id);
+            // ── CORRECCIÓN (25 sep 2026) ──
+            // Antes: solo se restauraba el OBJETO origenOperativo,
+            // pero direccionRuta y sentidoInicioTurno quedaban en su
+            // valor por defecto ("ida" / null) — confirmado en ruta
+            // real: tras restaurar el turno, los comandos de voz de
+            // geocercas de tarifa sonaban con el sentido incorrecto
+            // hasta cruzar la siguiente geocerca operativa real.
+            // Esta corrección NO toca pasajeros, dinero, conteos ni
+            // historial — solo restaura la dirección correcta,
+            // reutilizando el mismo geo.sentido ya validado, sin
+            // duplicar lógica nueva.
+            if(geoOrigen.sentido){
+              if(!sentidoInicioTurno) sentidoInicioTurno = geoOrigen.sentido;
+              direccionRuta = geoOrigen.sentido;
+              momentoUltimaGeocercaOperativa = Date.now();
+            }
+          }
         }
         guardarEstado();
         actualizarUI();
