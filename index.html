@@ -586,20 +586,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     </div>
   </div>
 
-  <!-- COPILOTO: ruta en curso -->
-  <div class="ruta-viva" id="rutaVivaBox">
-    <div class="ruta-cabecera">
-      <div class="ruta-titulo" id="rutaVivaTitulo">Ruta en curso</div>
-    </div>
-    <div class="ruta-track">
-      <div class="ruta-progreso" id="rutaVivaProgreso"></div>
-      <div class="ruta-punto" id="rutaVivaPunto"></div>
-    </div>
-    <div class="ruta-labels">
-      <span id="rutaVivaOrigen">—</span>
-      <span id="rutaVivaDestino">—</span>
-    </div>
-  </div>
+  <!-- Bloque "ruta-viva" eliminado el 25 sep 2026 — ver nota en JS -->
 
   <div class="sec-head">
     <div class="sec-title">¿A dónde vas?</div>
@@ -1631,7 +1618,7 @@ function verificarGeocercas(pos){
   // detectarDireccion() por latitud sigue funcionando como respaldo.
   detectarDireccionPorTrazado(pos.lat, pos.lng);
   detectarDireccion(pos.lat);
-  actualizarRutaViva(); // refleja el progreso real en cada posición GPS
+  // (llamada a actualizarRutaViva() eliminada el 25 sep 2026 — ver nota)
 
   // ── Control automático de tiempo por tramo ──
   verificarFinTramo(pos.lat, pos.lng);
@@ -1858,7 +1845,7 @@ function alEntrarGeocercaOperativa(geo){
 }
 
 function actualizarIndicadorRuta(){
-  actualizarRutaViva();
+  // (llamada a actualizarRutaViva() eliminada el 25 sep 2026 — ver nota)
   const el = document.getElementById("vbarRutaOp");
   if(!el) return;
   if(origenOperativo && destinoOperativo){
@@ -3894,51 +3881,19 @@ function actualizarAnilloMeta(totalDin){
 }
 
 // ══ COPILOTO IA — Ruta en curso (origen/destino real) ══
-function actualizarRutaViva(){
-  const box = document.getElementById("rutaVivaBox");
-  const titulo = document.getElementById("rutaVivaTitulo");
-  const origenEl = document.getElementById("rutaVivaOrigen");
-  const destinoEl = document.getElementById("rutaVivaDestino");
-  const progresoEl = document.getElementById("rutaVivaProgreso");
-  const puntoEl = document.getElementById("rutaVivaPunto");
-  if(!box) return;
+// ── ELIMINADA (25 sep 2026) — función actualizarRutaViva() ──
+// Auditoría de sostenibilidad: esta función solo pintaba una barra
+// visual de "% de avance del tramo" — confirmado que no aporta a
+// los principios rectores del proyecto (Justicia y Seguridad),
+// nunca fue mencionada como algo que el conductor consultara
+// activamente, y añadía complejidad a un sistema (detección de
+// dirección) que ya requería atención por sí solo. Las variables
+// indiceTrazadoActual y sentidoTrazadoActual de las que dependía
+// SIGUEN EXISTIENDO y funcionando normalmente — son usadas por
+// detectarDireccionPorTrazado() para su propósito real (confirmar
+// el sentido del viaje), que es completamente independiente de
+// esta barra visual ya retirada.
 
-  if(typeof origenOperativo==="undefined" || !origenOperativo){
-    box.classList.remove("activa");
-    return;
-  }
-  box.classList.add("activa");
-  if(titulo) titulo.textContent = "Ruta en curso — Viaje "+(typeof viajeActual!=="undefined"?viajeActual:1);
-  if(origenEl) origenEl.innerHTML = "<b>"+origenOperativo.nombre+"</b>";
-
-  // ── PROGRESO REAL (3 sep 2026) — Sprint 3 ──
-  // Antes: solo 50% (en curso) o 100% (llegó) — no reflejaba el
-  // avance real. Ahora: porcentaje real según cuántos puntos del
-  // trazado de 11 ya se tocaron, con el nombre del punto actual.
-  const trazado = sentidoTrazadoActual === "vuelta" ? TRAZADO_VUELTA : TRAZADO_IDA;
-  const totalPuntos = trazado.length - 1; // el último punto = destino = 100%
-  const pctReal = totalPuntos > 0
-    ? Math.min(100, Math.round((indiceTrazadoActual/totalPuntos)*100))
-    : 0;
-
-  if(typeof destinoOperativo!=="undefined" && destinoOperativo){
-    if(destinoEl) destinoEl.innerHTML = "<b>"+destinoOperativo.nombre+"</b>";
-    if(progresoEl) progresoEl.style.width = "100%";
-    if(puntoEl) puntoEl.style.left = "100%";
-  } else {
-    const destEsperado = origenOperativo.destinosEsperados && origenOperativo.destinosEsperados[0]
-      ? origenOperativo.destinosEsperados[0].replace("_"," ")
-      : "destino";
-    if(destinoEl){
-      const puntoActualNombre = trazado[indiceTrazadoActual]?.nombre;
-      destinoEl.textContent = puntoActualNombre
-        ? destEsperado + " ("+puntoActualNombre+" — "+pctReal+"%)"
-        : destEsperado;
-    }
-    if(progresoEl) progresoEl.style.width = pctReal+"%";
-    if(puntoEl) puntoEl.style.left = pctReal+"%";
-  }
-}
 
 function actualizarUI(){
   const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
@@ -4161,7 +4116,6 @@ async function recuperarTurnoActivo(){
 
 // ══ INIT ══
 renderDestinos();renderTarifasAdmin();actualizarUI();setViaje(viajeActual);actualizarBarraVehiculo();
-actualizarRutaViva();
 inicializarVoz();
 // Activar GPS automáticamente después de configurar el turno
 setTimeout(()=>{
