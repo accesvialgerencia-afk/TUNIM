@@ -69,6 +69,24 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
 .empty{text-align:center;padding:32px 20px;color:var(--texto-mute);font-size:0.85rem}
 .empty .ico{font-size:2rem;margin-bottom:10px;opacity:.5}
 .nota{font-size:0.62rem;color:var(--texto-mute);text-align:center;padding:16px 20px 24px;line-height:1.5}
+
+/* ── PESTAÑAS ── */
+.tabs{display:flex;gap:6px;padding:12px 20px 0}
+.tab{flex:1;padding:10px;border-radius:10px;border:1px solid var(--linea);background:var(--noche-2);color:var(--texto-sec);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:1rem;cursor:pointer}
+.tab.on{background:var(--ambar);border-color:var(--ambar);color:#1A1200}
+.mes-sel{width:100%;background:var(--noche-2);border:1px solid var(--linea);border-radius:10px;color:var(--texto);padding:10px 12px;font-family:'Inter',sans-serif;font-size:0.85rem;margin-bottom:14px}
+.alerta{background:var(--rojo-suave);border:1px solid rgba(255,93,93,.4);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:0.78rem;color:var(--rojo);line-height:1.5}
+.alerta strong{display:block;margin-bottom:4px}
+.alerta .fila-pend{display:flex;justify-content:space-between;gap:8px;color:var(--texto);font-family:'JetBrains Mono',monospace;font-size:0.72rem;padding:3px 0}
+.cond-nombre{font-weight:700;font-size:0.9rem;margin-bottom:2px}
+.cond-sub{font-size:0.62rem;color:var(--texto-mute);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.barra{height:6px;background:var(--linea);border-radius:3px;overflow:hidden;margin:6px 0 2px}
+.barra > div{height:100%;background:var(--ambar)}
+.barra.ok > div{background:var(--verde)}
+.tag{display:inline-block;font-size:0.55rem;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
+.tag.tit{background:var(--verde-suave);color:var(--verde)}
+.tag.rel{background:rgba(74,144,217,.15);color:#4A90D9}
+.mini{font-size:0.62rem;color:var(--texto-mute);line-height:1.5;margin-top:6px}
 </style>
 </head>
 <body>
@@ -113,16 +131,30 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
 
     <div class="placas" id="placas"></div>
 
-    <div class="pulso-wrap off" id="pulsoWrap">
-      <div class="pulso"></div>
-      <div class="pulso-txt" id="estadoSync">Conectando con el turno</div>
+    <div class="tabs">
+      <button class="tab on" data-tab="hoy">Hoy</button>
+      <button class="tab" data-tab="mes">Mes</button>
     </div>
 
-    <div class="contenido">
-      <div id="datosLive"></div>
+    <div id="panelHoy">
+      <div class="pulso-wrap off" id="pulsoWrap">
+        <div class="pulso"></div>
+        <div class="pulso-txt" id="estadoSync">Conectando con el turno</div>
+      </div>
 
-      <div class="seccion-titulo"><span>Liquidaciones recientes</span><button id="btnRefLiq">Actualizar</button></div>
-      <div id="liquidaciones"></div>
+      <div class="contenido">
+        <div id="datosLive"></div>
+
+        <div class="seccion-titulo"><span>Liquidaciones recientes</span><button id="btnRefLiq">Actualizar</button></div>
+        <div id="liquidaciones"></div>
+      </div>
+    </div>
+
+    <div id="panelMes" class="hidden">
+      <div class="contenido">
+        <select class="mes-sel" id="mesSel"></select>
+        <div id="mesResumen"></div>
+      </div>
     </div>
 
     <div class="nota">Solo lectura. Los datos los registra el conductor desde TUNIM; los gastos del día los declara él al cerrar el turno.</div>
@@ -264,6 +296,7 @@ function elegirPlaca(placa){
   $("datosLive").innerHTML = "";
   estado("Conectando con el turno", false);
   cargarLiquidaciones();
+  if(!$("panelMes").classList.contains("hidden")) cargarMes();
 
   // 1) vehiculos/{placa}.turnoActivoHoyId  2) turnos_activos/{id} en vivo
   let idEscuchado = null;
@@ -338,7 +371,7 @@ async function cargarLiquidaciones(){
         <div class="fila"><span class="lbl">Conductor</span><span class="val">${esc(l.nombreConductor || "—")}</span></div>
         <div class="fila"><span class="lbl">Total recaudado</span><span class="val">${esc(dinero(l.total))}</span></div>
         <div class="fila"><span class="lbl">Gastos declarados</span><span class="val">${esc(dinero(l.totalGastos))}</span></div>
-        <div class="fila"><span class="lbl">Neto</span><span class="val" style="color:var(--verde)">${esc(dinero(l.neto))}</span></div>
+        <div class="fila"><span class="lbl">Neto</span><span class="val" style="color:var(--verde)">${esc(dinero((Number(l.total) || 0) - (Number(l.totalGastos) || 0)))}</span></div>
       </div>`;
     }).join("");
   }catch(e){
@@ -347,6 +380,206 @@ async function cargarLiquidaciones(){
   }
 }
 $("btnRefLiq").addEventListener("click", cargarLiquidaciones);
+
+
+// ══════════════════════════════════════════════════════════════
+// RESUMEN MENSUAL — comisión por conductor y por vehículo
+// Opción B (11 oct 2026): la meta y los tramos de cada conductor son
+// proporcionales a los días que trabajó en ese vehículo. Todo se mide
+// sobre el neto. Los días sin cierre cuentan como bruto provisional
+// sin gastos y se muestran en rojo al propietario.
+// ══════════════════════════════════════════════════════════════
+
+// Comisión escalonada (marginal): cada tramo paga su porcentaje solo sobre
+// la parte del neto que cae dentro de él.
+function comisionEscalonada(neto, limites, pcts){
+  if(!(neto > 0)) return { comision: 0, tramo: 1 };
+  let resto = neto, previo = 0, total = 0, tramo = 1;
+  for(let i = 0; i < pcts.length; i++){
+    const tope = (i < limites.length) ? limites[i] : Infinity;
+    const ancho = tope - previo;
+    const parte = Math.min(resto, ancho);
+    if(parte <= 0) break;
+    total += parte * pcts[i];
+    resto -= parte;
+    previo = tope;
+    tramo = i + 1;
+    if(resto <= 0) break;
+  }
+  return { comision: Math.round(total), tramo };
+}
+
+// Comisión de UN conductor en UN vehículo. La meta y los tramos son
+// proporcionales a los días que trabajó (opción B, 11 oct 2026).
+function calcularConductor(c, dias, neto){
+  const base = Math.max(1, Number(c.diasTrabajoMes) || 25);
+  const prop = dias / base;
+  const limites = [c.tramo1Hasta, c.tramo2Hasta, c.tramo3Hasta].map(x => Number(x) * prop);
+  const pcts = [c.tramo1Pct, c.tramo2Pct, c.tramo3Pct, c.tramo4Pct].map(x => Number(x) / 100);
+  const r = comisionEscalonada(neto, limites, pcts);
+  const metaMin = Number(c.metaNetoMinimo) * prop;
+  const metaAlta = Number(c.metaNetoAlto) * prop;
+  return {
+    proporcion: prop,
+    comision: r.comision,
+    tramo: r.tramo,
+    metaMinima: Math.round(metaMin),
+    metaAlta: Math.round(metaAlta),
+    pctMeta: metaMin > 0 ? neto / metaMin : 0,
+    promedioDia: dias > 0 ? Math.round(neto / dias) : 0,
+    metaDiaria: Math.round(Number(c.metaNetoMinimo) / base)
+  };
+}
+
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+function opcionesMes(){
+  const hoy = hoyColombia();
+  let y = Number(hoy.slice(0, 4)), m = Number(hoy.slice(5, 7));
+  const ops = [];
+  for(let i = 0; i < 4; i++){
+    ops.push({ valor: y + "-" + String(m).padStart(2, "0"), texto: MESES[m - 1] + " de " + y + (i === 0 ? " (este mes)" : "") });
+    m--; if(m === 0){ m = 12; y--; }
+  }
+  return ops;
+}
+
+function fechaDeId(id, respaldo){
+  const m = /^TUN-(\d{4})(\d{2})(\d{2})-/.exec(id || "");
+  return m ? m[1] + "-" + m[2] + "-" + m[3] : (respaldo || "");
+}
+function cedulaDeId(id, respaldo){
+  const p = String(id || "").split("-");
+  return p.length === 4 ? p[3] : String(respaldo || "");
+}
+const ocultaCedula = c => c.length > 3 ? "•••" + c.slice(-3) : c;
+
+async function cargarMes(){
+  const placa = placaActual;
+  const mes = $("mesSel").value;
+  const cont = $("mesResumen");
+  cont.innerHTML = '<div class="empty">Calculando…</div>';
+  try{
+    // 1) Empresa del vehículo y su configuración de comisión
+    const sv = await getDoc(doc(db, "vehiculos", placa));
+    const empresaId = (sv.exists() && sv.data().empresaId) || "autoboy";
+    const sc = await getDoc(doc(db, "config_comision", empresaId));
+    if(!sc.exists()){
+      cont.innerHTML = '<div class="empty">Falta la configuración de comisión de esta empresa.</div>';
+      return;
+    }
+    const cfg = sc.data();
+
+    // 2) Turnos cerrados (liquidaciones) y turnos registrados (turnos_activos)
+    const [sl, st] = await Promise.all([
+      getDocs(query(collection(db, "liquidaciones"), where("placa", "==", placa))),
+      getDocs(query(collection(db, "turnos_activos"), where("placa", "==", placa)))
+    ]);
+    if(placa !== placaActual || mes !== $("mesSel").value) return;
+
+    const hoy = hoyColombia();
+    const dias = new Map(); // idTurno -> día
+    sl.forEach(s => {
+      const d = s.data(), id = d.idTurno || s.id;
+      const fecha = fechaDeId(id, d.fecha);
+      if(fecha.slice(0, 7) !== mes) return;
+      const bruto = Number(d.total) || 0, gastos = Number(d.totalGastos) || 0;
+      dias.set(id, { id, fecha, cedula: cedulaDeId(id, d.cedulaConductor), nombre: d.nombreConductor || "",
+        estado: "cerrado", bruto, gastos, neto: bruto - gastos });
+    });
+    st.forEach(s => {
+      const d = s.data(), id = d.idTurno || s.id;
+      if(dias.has(id)) return;                       // ya está cerrado
+      const fecha = fechaDeId(id, d.fecha);
+      if(fecha.slice(0, 7) !== mes) return;
+      const bruto = Number(d.totalRecaudo) || 0;
+      if(!(bruto > 0)) return;                       // sin producción no cuenta
+      dias.set(id, { id, fecha, cedula: cedulaDeId(id, d.cedulaConductor), nombre: d.nombreConductor || "",
+        estado: fecha < hoy ? "pendiente" : "en curso", bruto, gastos: 0, neto: bruto });
+    });
+
+    // 3) Agrupar por conductor (cédula) en este vehículo
+    const porCed = new Map();
+    dias.forEach(d => {
+      if(!porCed.has(d.cedula)) porCed.set(d.cedula, { cedula: d.cedula, nombre: d.nombre, dias: [] });
+      const g = porCed.get(d.cedula);
+      if(!g.nombre && d.nombre) g.nombre = d.nombre;
+      g.dias.push(d);
+    });
+
+    // 4) Cálculo por conductor
+    const lista = [...porCed.values()].map(g => {
+      const bruto = g.dias.reduce((s, d) => s + d.bruto, 0);
+      const gastos = g.dias.reduce((s, d) => s + d.gastos, 0);
+      const neto = bruto - gastos;
+      const r = calcularConductor(cfg, g.dias.length, neto);
+      return { ...g, bruto, gastos, neto, ...r };
+    }).sort((a, b) => b.neto - a.neto);
+
+    const tot = lista.reduce((t, g) => ({ bruto: t.bruto + g.bruto, gastos: t.gastos + g.gastos,
+      neto: t.neto + g.neto, comision: t.comision + g.comision, dias: t.dias + g.dias.length }),
+      { bruto: 0, gastos: 0, neto: 0, comision: 0, dias: 0 });
+    const pend = [...dias.values()].filter(d => d.estado === "pendiente").sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const curso = [...dias.values()].filter(d => d.estado === "en curso");
+
+    if(!lista.length){
+      cont.innerHTML = '<div class="empty"><div class="ico">📅</div>No hay producción registrada en este mes para esta placa</div>';
+      return;
+    }
+
+    let html = "";
+    if(pend.length){
+      html += `<div class="alerta"><strong>${pend.length} día${pend.length > 1 ? "s" : ""} sin cerrar</strong>
+        Cuentan como bruto provisional, sin gastos, hasta que el conductor envíe el reporte.` +
+        pend.map(d => `<div class="fila-pend"><span>${esc(d.fecha)} · ${esc(d.nombre || ocultaCedula(d.cedula))}</span><span>${esc(dinero(d.bruto))}</span></div>`).join("") +
+        `</div>`;
+    }
+    html += `<div class="metric-grid">
+      <div class="metric-card"><div class="metric-lbl">Neto del mes</div><div class="metric-val" style="color:var(--verde)">${esc(dinero(tot.neto))}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Comisión a pagar</div><div class="metric-val" style="color:var(--ambar)">${esc(dinero(tot.comision))}</div></div>
+    </div>
+    <div class="card">
+      <div class="fila"><span class="lbl">Recaudo bruto</span><span class="val">${esc(dinero(tot.bruto))}</span></div>
+      <div class="fila"><span class="lbl">Gastos declarados</span><span class="val">${esc(dinero(tot.gastos))}</span></div>
+      <div class="fila"><span class="lbl">Días de conductor</span><span class="val">${esc(tot.dias)}</span></div>
+    </div>
+    <div class="seccion-titulo"><span>Por conductor</span></div>`;
+
+    html += lista.map(g => {
+      const pctReal = Math.max(0, Math.round(g.pctMeta * 100));
+      const pct = Math.min(100, pctReal);
+      const cumple = g.pctMeta >= 1;
+      return `<div class="card">
+        <div class="cond-nombre">${esc(g.nombre || "Conductor")}</div>
+        <div class="cond-sub">${esc(ocultaCedula(g.cedula))} · ${esc(g.dias.length)} día${g.dias.length > 1 ? "s" : ""} trabajado${g.dias.length > 1 ? "s" : ""}</div>
+        <div class="fila"><span class="lbl">Neto</span><span class="val">${esc(dinero(g.neto))}</span></div>
+        <div class="fila"><span class="lbl">Promedio por día</span><span class="val">${esc(dinero(g.promedioDia))}</span></div>
+        <div class="fila"><span class="lbl">Meta diaria</span><span class="val">${esc(dinero(g.metaDiaria))}</span></div>
+        <div class="fila"><span class="lbl">Tramo alcanzado</span><span class="val">${esc(g.tramo)} de 4</span></div>
+        <div class="fila"><span class="lbl">Comisión</span><span class="val" style="color:var(--ambar)">${esc(dinero(g.comision))}</span></div>
+        <div class="barra ${cumple ? "ok" : ""}"><div style="width:${pct}%"></div></div>
+        <div class="mini">${pctReal}% de su meta mínima del mes (${esc(dinero(g.metaMinima))}), proporcional a ${esc(g.dias.length)} días.</div>
+      </div>`;
+    }).join("");
+
+    if(curso.length) html += `<div class="mini">Incluye el turno de hoy, aún en curso.</div>`;
+    cont.innerHTML = html;
+  }catch(e){
+    console.warn("Error resumen mensual:", e);
+    cont.innerHTML = '<div class="empty">No se pudo calcular el resumen. Revisa tu conexión.</div>';
+  }
+}
+
+// ── Pestañas Hoy / Mes ──
+function verTab(t){
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("panelHoy").classList.toggle("hidden", t !== "hoy");
+  $("panelMes").classList.toggle("hidden", t !== "mes");
+  if(t === "mes") cargarMes();
+}
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => verTab(b.dataset.tab)));
+$("mesSel").innerHTML = opcionesMes().map(o => `<option value="${o.valor}">${esc(o.texto)}</option>`).join("");
+$("mesSel").addEventListener("change", cargarMes);
 
 // Si la conexión tarda en responder, no dejar la pantalla de "Conectando"
 setTimeout(() => { if(!$("pCargando").classList.contains("hidden")) ver("pLogin"); }, 10000);
