@@ -159,6 +159,9 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 .tab-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px 6px;gap:2px;background:none;border:none;cursor:pointer;color:var(--muted);font-family:'Inter',sans-serif;font-size:0.55rem;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;transition:color 0.2s}
 .tab-btn .tab-icon{font-size:1.1rem;line-height:1}
 .tab-btn.active{color:var(--amarillo)}
+.tab-btn{position:relative}
+.tab-btn.tab-pendiente{color:var(--amarillo)}
+.tab-btn.tab-pendiente::after{content:"";position:absolute;top:4px;right:calc(50% - 18px);width:9px;height:9px;border-radius:50%;background:#FF3D5A;box-shadow:0 0 6px rgba(255,61,90,0.8)}
 .tab-page{display:none;padding-bottom:72px}
 .tab-page.active{display:block}
 
@@ -487,6 +490,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <input class="modal-input" id="inputCedula" type="number" placeholder="12345678" autocomplete="off" style="letter-spacing:2px">
     <label class="modal-label">Nombre del conductor <span style="color:var(--muted2);font-size:0.65rem">(opcional)</span></label>
     <input class="modal-input" id="inputNombreConductor" type="text" placeholder="Juan Piravague" autocomplete="off" style="text-transform:capitalize">
+    <div id="avisoTurnoSinCerrar" style="display:none;margin:6px 0;padding:10px;border-radius:10px;border:1px solid var(--amarillo);background:rgba(245,200,0,0.08);color:var(--amarillo);font-size:0.72rem;line-height:1.4"></div>
     <label class="modal-label">Fecha de inicio de ruta</label>
     <input class="modal-input" id="inputFecha" type="date" autocomplete="off">
     <label class="modal-label">Hora de inicio</label>
@@ -733,8 +737,7 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
           <div style="font-size:0.56rem;color:var(--muted);text-align:center;padding-top:2px">El porcentaje lo define cada propietario según su acuerdo — TUNIM solo calcula</div>
         </div>
         <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
-          <button class="btn-nuevo-turno" onclick="confirmarNuevoTurno()">🔄 LIQUIDAR Y NUEVO TURNO</button>
-          <button onclick="enviarReportePorCorreo()" style="width:100%;padding:12px;background:var(--azul);border:none;border-radius:12px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;color:#000">📧 ENVIAR REPORTE POR CORREO</button>
+          <button class="btn-nuevo-turno" onclick="enviarYCerrarTurno()">📧 ENVIAR REPORTE Y CERRAR TURNO</button>
         </div>
       </div>
     </div>
@@ -2425,7 +2428,11 @@ function actualizarBarraVehiculo(){
 // PRELLENAN los campos para que sea rápido volver a confirmar —
 // nunca se usan para saltarse la validación.
 window.addEventListener("load",()=>{
-  const hoy=new Date().toISOString().slice(0,10);
+  // ── CORRECCIÓN (2 oct 2026): misma causa que recuperarTurnoActivo() —
+  // toISOString() calcula en UTC puro; diaKey() fuerza la hora real
+  // de Colombia. Sin esto, el campo de fecha del modal mostraría el
+  // día siguiente a partir de las 7pm hora Colombia. ──
+  const hoy=diaKey();
   document.getElementById("inputFecha").value=hoy;
   document.getElementById("inputHoraInicio").value=new Date().toTimeString().slice(0,5);
 
@@ -2634,6 +2641,10 @@ async function guardarLiquidacionFirebase(resumen){
       origenOperativo:   origenOperativo?.nombre||"",
       destinoOperativo:  destinoOperativo?.nombre||"",
       rutaOperativa:     configTurno.rutaOperativa||"",
+      // 11 oct 2026 — campos NUEVOS (solo se agregan): día en que empezó el
+      // turno (día del recaudo) y día en que se cerró. `fecha` no cambia.
+      fechaRecaudo:      configTurno.fechaInicio||"",
+      fechaCierre:       diaKey(),
       ...resumen,
       guardadoEn: serverTimestamp()
     },{merge:true});
@@ -2774,7 +2785,7 @@ function liquidarDia(est){
     const propietario=Math.round(neto*(pct/100));
     const conductor=neto-propietario;
     const hist=cargarHistDias();
-    const resumen={fecha:est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,gastos,totalGastos,pctPropietario:pct,neto,propietario,conductor,conteos:[...est.conteos]};
+    const resumen={fecha:(configTurno&&configTurno.fechaInicio)||est.diaActual||diaKey(new Date(Date.now()-86400000)),pax:totalPax,total:totalDin,gastos,totalGastos,pctPropietario:pct,neto,propietario,conductor,conteos:[...est.conteos]};
     hist.unshift(resumen);
     localStorage.setItem(HIST_KEY,JSON.stringify(hist.slice(0,90)));
     guardarLiquidacionFirebase(resumen);
@@ -2817,9 +2828,10 @@ function mostrarModalConfirmarCierre(){
     "Tu turno sigue activo desde ayer.\n\n"+
     "Llevas "+totalPax+" pasajeros — $"+totalDin.toLocaleString("es-CO")+"\n\n"+
     "¿Ya terminaste y liquidaste tus datos?\n\n"+
-    "Aceptar = Sí, cerrar y empezar turno nuevo\n"+
+    "Aceptar = Sí, ir a Reportes a registrar gastos y cerrar\n"+
     "Cancelar = No, seguir trabajando en este turno"
   );
+  if(seguir){ irAReportesParaCerrar(); return; }
   if(seguir){
     liquidarDia(estado);
     estado=estadoDefault();
@@ -3494,23 +3506,169 @@ function vozCierreTurno(){
   hablar(msg,0.88,1.1);
 }
 
-// Recordatorio de cierre a las 23:59 hora Colombia
+// ══ RECORDATORIOS DE REPORTE Y CIERRE (11 oct 2026) ══
+// Reemplazan el recordatorio de las 23:59, hora a la que el conductor
+// normalmente ya duerme. Reglas:
+//  · SOLO recuerdan (voz corta + aviso); NUNCA cierran ni envían nada solos.
+//  · Suenan a las 20:00 y a las 21:00 hora Colombia, una vez por hora marcada,
+//    y solo si el reporte de hoy no se ha enviado.
+//  · Nunca interrumpen el registro de pasajeros: si hubo un pasajero
+//    registrado en los últimos 3 minutos, o ya está sonando una voz, esperan.
+//  · No usan confirm() ni ventanas: no bloquean ni tapan los botones.
+const RECORDATORIO_HORAS=[20,21];
+const RECORDATORIO_ESPERA_SEG=180;
+
+// La marca de "reporte enviado" es por DÍA DEL TURNO que se reporta, no por
+// el día de hoy: cerrar el turno de ayer no debe apagar los recordatorios de hoy.
+function diaDelTurnoActual(){
+  return (configTurno&&configTurno.fechaInicio)||(estado&&estado.diaActual)||diaKey();
+}
+function reporteYaEnviadoHoy(){
+  try{ return !!localStorage.getItem("tunim_reporte_enviado_"+diaDelTurnoActual()); }catch(e){ return false; }
+}
+function marcarReporteEnviadoHoy(dia){
+  try{ localStorage.setItem("tunim_reporte_enviado_"+(dia||diaDelTurnoActual()),"1"); }catch(e){}
+  actualizarAvisoReportes();
+}
+function hayRegistroReciente(){
+  try{
+    const ult=estado.historial&&estado.historial[0];
+    if(!ult||!ult.hora) return false;
+    const p=String(ult.hora).split(":").map(Number);
+    const c=horaColombiaActual();
+    const ahoraSeg=c.getHours()*3600+c.getMinutes()*60+c.getSeconds();
+    const regSeg=p[0]*3600+p[1]*60+(p[2]||0);
+    const dif=ahoraSeg-regSeg;
+    return dif>=0 && dif<RECORDATORIO_ESPERA_SEG;
+  }catch(e){ return false; }
+}
+// Punto rojo en la pestaña Reportes mientras el reporte de hoy esté pendiente
+function actualizarAvisoReportes(){
+  try{
+    const btn=document.querySelector('.tab-btn[onclick*="reportes"]');
+    if(!btn) return;
+    const pax=(estado&&estado.conteos)?estado.conteos.reduce((a,b)=>a+b,0):0;
+    const h=horaColombiaActual().getHours();
+    btn.classList.toggle("tab-pendiente", pax>0 && h>=RECORDATORIO_HORAS[0] && !reporteYaEnviadoHoy());
+  }catch(e){}
+}
 function verificarRecordatorioCierre(){
-  const ahora=new Date();
-  // Colombia siempre UTC-5
-  const utc=ahora.getTime()+ahora.getTimezoneOffset()*60000;
-  const colombia=new Date(utc-5*3600000);
-  const h=colombia.getHours(),m=colombia.getMinutes();
-  const key="tunim_recordatorio_"+diaKey();
-  if(h===23&&m===59&&!localStorage.getItem(key)){
+  try{
+    actualizarAvisoReportes();
+    if(!configTurno||!configTurno.placa) return;
+    const pax=estado.conteos.reduce((a,b)=>a+b,0);
+    if(pax===0||reporteYaEnviadoHoy()) return;
+    const h=horaColombiaActual().getHours();
+    const vencidas=RECORDATORIO_HORAS.filter(x=>h>=x);
+    if(!vencidas.length) return;
+    const slot=vencidas[vencidas.length-1];
+    const key="tunim_recordatorio_"+diaKey()+"_"+slot;
+    if(localStorage.getItem(key)) return;
+    if(hayRegistroReciente()) return;
+    if(window.speechSynthesis&&window.speechSynthesis.speaking) return;
     localStorage.setItem(key,"1");
-    vozCierreTurno();
-    mostrarToast("🌙 Hora de cerrar el turno — envía el reporte","warn");
-    // Programar envío de reporte por correo
-    setTimeout(()=>enviarReportePorCorreo(),3000);
-  }
+    mostrarToast("📋 Al terminar tu turno: abre Reportes, registra gastos y envía el reporte","warn");
+    hablarConFiltro("Recuerda registrar tus gastos y enviar el reporte al terminar tu turno.",0.9,1.1);
+  }catch(e){}
 }
 setInterval(verificarRecordatorioCierre,30000);
+
+// ══ BOTÓN ÚNICO: ENVIAR REPORTE Y CERRAR TURNO (11 oct 2026) ══
+// Vive solo en la pestaña Reportes (hay que abrirla y registrar gastos
+// antes). Orden: 1) arma y envía el reporte con los datos de hoy,
+// 2) liquida y reinicia con el MISMO código de "Nuevo turno". El cierre
+// NO depende de que el correo salga: si falla, el reporte queda pendiente.
+function enviarYCerrarTurno(){
+  const totalPax=estado.conteos.reduce((a,b)=>a+b,0);
+  if(totalPax===0){
+    mostrarToast("No hay pasajeros registrados para reportar","alerta");
+    return;
+  }
+  const {total:totalGastos}=obtenerGastosHoy();
+  if(totalGastos===0 && !confirm("No registraste gastos hoy.\n\n¿Confirmas que hoy no tuviste gastos (ACPM, parqueo, desayuno, etc.)?")) return;
+  let aviso="¿Enviar el reporte y cerrar el turno de hoy?";
+  try{
+    const yaCerro=cargarHistDias().some(h=>h.fecha===diaDelTurnoActual());
+    if(yaCerro) aviso+="\n\nYa cerraste un turno hoy. Si sigues trabajando, este cierre reemplazará al anterior en el sistema (el reporte anterior queda en tu correo).";
+  }catch(e){}
+  if(!confirm(aviso)) return;
+  marcarReporteEnviadoHoy();
+  enviarReportePorCorreo();   // arma el texto con los datos actuales ANTES de reiniciar
+  ejecutarNuevoTurno();       // mismo cierre y reinicio de "Nuevo turno"
+}
+
+// ══ REPORTES PENDIENTES (sin señal o error de correo) ══
+const REPORTE_PENDIENTE_KEY="tunim_reporte_pendiente_v1";
+function guardarReportePendiente(r){
+  try{
+    const l=JSON.parse(localStorage.getItem(REPORTE_PENDIENTE_KEY)||"[]");
+    l.push(r);
+    localStorage.setItem(REPORTE_PENDIENTE_KEY,JSON.stringify(l.slice(-10)));
+  }catch(e){}
+}
+let reintentandoReportes=false;
+async function reintentarReportesPendientes(){
+  if(reintentandoReportes) return;
+  reintentandoReportes=true;
+  try{
+    const lista=JSON.parse(localStorage.getItem(REPORTE_PENDIENTE_KEY)||"[]");
+    if(!lista.length) return;
+    const idDe=r=>r.fecha+"|"+r.placa+"|"+(r.reporte||"").length;
+    const enviados=[];
+    for(const r of lista){
+      try{
+        await emailjs.send("service_mext8fi","template_5dk2xxk",{fecha:r.fecha,placa:r.placa,reporte:r.reporte,to_email:r.to_email});
+        enviados.push(idDe(r));
+      }catch(e){}
+    }
+    if(enviados.length){
+      const actual=JSON.parse(localStorage.getItem(REPORTE_PENDIENTE_KEY)||"[]");
+      localStorage.setItem(REPORTE_PENDIENTE_KEY,JSON.stringify(actual.filter(r=>!enviados.includes(idDe(r)))));
+      mostrarToast("📧 Reporte pendiente enviado","");
+    }
+  }catch(e){}
+  finally{ reintentandoReportes=false; }
+}
+window.addEventListener("online",()=>setTimeout(reintentarReportesPendientes,3000));
+
+// ══ TURNO DEL DÍA ANTERIOR SIN CERRAR (11 oct 2026) ══
+// Si al abrir TUNIM quedó un turno de otro día con pasajeros y sin cerrar,
+// el modal lo dice claro y ofrece un botón para poner la fecha de ese turno.
+// Solo muestra información: no cierra, no borra y no cambia ningún dato.
+let fechaTurnoSinCerrar="";
+function avisarTurnoSinCerrar(){
+  try{
+    const modal=document.getElementById("modalConfig");
+    const caja=document.getElementById("avisoTurnoSinCerrar");
+    if(!modal||!caja) return;
+    if(window.getComputedStyle(modal).display==="none") return;
+    const pax=(estado&&estado.conteos)?estado.conteos.reduce((a,b)=>a+b,0):0;
+    const f=(configTurno&&configTurno.fechaInicio)||"";
+    if(pax===0||!f||f===diaKey()) return;
+    fechaTurnoSinCerrar=f;
+    caja.style.display="block";
+    caja.innerHTML="⚠ Tienes un turno sin cerrar del <b>"+f+"</b> con "+pax+" pasajeros. "
+      +"Escribe la <b>fecha de ese turno</b> abajo, entra, ve a <b>Reportes</b>, registra los gastos y toca "
+      +"<b>ENVIAR REPORTE Y CERRAR TURNO</b>. Después se inicia el turno de hoy."
+      +'<br><button type="button" onclick="usarFechaTurnoSinCerrar()" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--amarillo);background:transparent;color:var(--amarillo);cursor:pointer">Usar la fecha del turno sin cerrar</button>';
+  }catch(e){}
+}
+function usarFechaTurnoSinCerrar(){
+  const el=document.getElementById("inputFecha");
+  if(el&&fechaTurnoSinCerrar) el.value=fechaTurnoSinCerrar;
+}
+window.addEventListener("load",()=>setTimeout(avisarTurnoSinCerrar,1200));
+
+// "Aceptar" en el aviso de turno activo desde ayer ya no liquida de inmediato
+// (los gastos están vacíos): lleva a Reportes para registrarlos y cerrar.
+function irAReportesParaCerrar(){
+  try{
+    const btn=document.querySelector('.tab-btn[onclick*="reportes"]');
+    if(btn) setTab('reportes',btn);
+    mostrarToast("Registra los gastos y toca ENVIAR REPORTE Y CERRAR TURNO","warn");
+  }catch(e){}
+}
+window.addEventListener("load",()=>setTimeout(reintentarReportesPendientes,8000));
 
 // ══ HORA COLOMBIA — UTC-5 FIJA ══
 function horaColombiaActual(){
@@ -3538,7 +3696,8 @@ function enviarReportePorCorreo(){
   const neto=Math.max(0,totalDin-totalGastos);
   const propietario=Math.round(neto*(pct/100));
   const conductor=neto-propietario;
-  const hoy=formatFechaCol(horaColombiaActual());
+  const hoy=(function(){ try{ const f=configTurno&&configTurno.fechaInicio; if(f&&/^\d{4}-\d{2}-\d{2}$/.test(f)) return formatFechaCol(new Date(f+"T12:00:00")); }catch(e){} return formatFechaCol(horaColombiaActual()); })();
+  const diaReporte=diaDelTurnoActual();
   const placa=configTurno.placa||"---";
 
   let reporte="TUNIM - Reporte Diario\n";
@@ -3600,8 +3759,11 @@ function enviarReportePorCorreo(){
   }).then(()=>{
     mostrarToast("Reporte enviado a tu correo","");
     hablar("Reporte del dia enviado correctamente.",0.9,1.1);
+    marcarReporteEnviadoHoy(diaReporte);
   }).catch((err)=>{
     console.warn("EmailJS error:",err);
+    // 11 oct 2026 — queda guardado para reintentar al volver la señal o al abrir la app
+    guardarReportePendiente({fecha:hoy,placa:placa,reporte:reporte,to_email:(configTurno.correoPropietario||"accesvialgerencia@gmail.com")});
     // ── CORRECCIÓN: ya no se usa mailto: (falla en tablets sin app de
     // correo configurada — confirmado el 31 ago). En su lugar, se
     // muestra el reporte completo en pantalla con un botón de copiar,
@@ -3993,6 +4155,15 @@ function formatFecha(key){
 
 function confirmarNuevoTurno(){
   if(confirm("¿Iniciar nuevo turno? El día actual se guardará en el historial.")){
+    ejecutarNuevoTurno();
+  }
+}
+
+// ── 11 oct 2026 — El cuerpo de confirmarNuevoTurno() se movió aquí SIN
+// cambios, para que el botón único "Enviar reporte y cerrar turno" y el
+// botón pequeño "Nuevo turno" ejecuten exactamente el mismo cierre. ──
+function ejecutarNuevoTurno(){
+  {
     liquidarDia(estado);estado=estadoDefault();viajeActual=1;
     // ── CORRECCIÓN CRÍTICA (23 sep 2026) ──
     // liquidarDia() YA guardó de forma segura todos los pasajeros
@@ -4087,7 +4258,18 @@ window.addEventListener("beforeunload", ()=>{
 // ══ R5 — Recuperar turno activo al reabrir la app ══
 async function recuperarTurnoActivo(){
   if(!configTurno?.placa||!configTurno?.cedula) return;
-  const hoy = new Date().toISOString().slice(0,10);
+  // ── CORRECCIÓN (2 oct 2026) ──
+  // Antes: new Date().toISOString() calcula SIEMPRE en UTC puro,
+  // sin ajuste de zona horaria. Colombia es UTC-5, así que a partir
+  // de las 7:00pm hora Colombia, en UTC ya es medianoche del día
+  // SIGUIENTE — esta función entonces comparaba la fecha real del
+  // turno (hoy, en Colombia) contra "mañana" (en UTC), fallaban
+  // la coincidencia, y pedía el modal de turno nuevo sin necesidad.
+  // Confirmado en uso real: el conductor reportó que la app pedía
+  // reingresar datos justo a las 7pm. Ahora usa diaKey(), la misma
+  // función ya corregida que fuerza la hora real de Colombia en
+  // todo el sistema (ver corrección del 23 de septiembre).
+  const hoy = diaKey();
   if(configTurno.fechaInicio !== hoy) return; // Es de otro día
   // Ya hay datos locales — verificar si hay más en Firebase
   const totalLocal = estado.conteos.reduce((a,b)=>a+b,0);
