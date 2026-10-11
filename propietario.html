@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TUNIM — Portal Propietario</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --noche-0:#080B10; --noche-1:#0D1219; --noche-2:#141B25;
+  --linea:#26303D; --linea-fuerte:#3A4757;
+  --texto:#EAF0F7; --texto-sec:#8C9BAF; --texto-mute:#5A6779;
+  --ambar:#FFB020; --ambar-suave:#3A2B0F;
+  --verde:#2FD48A; --verde-suave:#0F2B21;
+  --rojo:#FF5D5D; --rojo-suave:#3A1414;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--texto);font-family:'Inter',sans-serif}
+.wrap{max-width:420px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.hidden{display:none !important}
+
+/* ── PANTALLAS DE ENTRADA ── */
+.centro{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:2.6rem;letter-spacing:5px}
+.login-logo span{color:var(--ambar)}
+.login-sub{font-size:0.68rem;color:var(--texto-mute);letter-spacing:2px;text-transform:uppercase;margin:6px 0 32px}
+.msg{font-size:0.85rem;color:var(--texto-sec);line-height:1.6;margin-bottom:20px;max-width:320px}
+.msg strong{color:var(--texto)}
+.btn-google{width:100%;max-width:320px;padding:14px;background:#fff;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:600;color:#1f1f1f;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn-google:active{transform:scale(0.98)}
+.btn-google svg{width:20px;height:20px}
+.btn-sec{margin-top:12px;background:none;border:1px solid var(--linea);color:var(--texto-sec);font-size:0.75rem;padding:9px 18px;border-radius:20px;cursor:pointer}
+.error{color:var(--rojo);font-size:0.78rem;padding:8px 12px;background:var(--rojo-suave);border-radius:8px;margin-top:14px;max-width:320px}
+
+/* ── APP ── */
+.header{padding:16px 20px 12px;background:var(--noche-1);border-bottom:1px solid var(--linea);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.header-marca{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px}
+.header-marca span{color:var(--ambar)}
+.header-quien{font-size:0.66rem;color:var(--texto-sec);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
+.btn-salir{background:none;border:1px solid var(--linea);color:var(--texto-mute);font-size:0.6rem;padding:5px 10px;border-radius:14px;cursor:pointer;flex-shrink:0}
+
+.placas{display:flex;gap:8px;padding:12px 20px 0;overflow-x:auto}
+.chip{font-family:'JetBrains Mono',monospace;font-size:0.78rem;letter-spacing:1.5px;padding:8px 14px;border-radius:20px;border:1px solid var(--linea);background:var(--noche-2);color:var(--texto-sec);cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--ambar);border-color:var(--ambar);color:#1A1200;font-weight:700}
+
+.pulso-wrap{display:flex;align-items:center;gap:6px;padding:10px 20px;background:var(--verde-suave);border-bottom:1px solid var(--linea);margin-top:12px}
+.pulso{position:relative;width:8px;height:8px}
+.pulso::before,.pulso::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--verde)}
+.pulso::after{animation:pa 2s ease-out infinite}
+@keyframes pa{0%{box-shadow:0 0 0 0 rgba(47,212,138,.55)}100%{box-shadow:0 0 0 8px rgba(47,212,138,0)}}
+.pulso-wrap.off{background:var(--noche-1)}
+.pulso-wrap.off .pulso::before,.pulso-wrap.off .pulso::after{background:var(--texto-mute);animation:none}
+.pulso-txt{font-size:0.66rem;color:var(--verde);letter-spacing:1px;text-transform:uppercase;font-weight:600}
+.pulso-wrap.off .pulso-txt{color:var(--texto-mute)}
+
+.contenido{flex:1;padding:20px}
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.metric-card{background:var(--noche-2);border:1px solid var(--linea);border-radius:14px;padding:16px}
+.metric-lbl{font-size:0.56rem;color:var(--texto-mute);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.metric-val{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;line-height:1}
+.seccion-titulo{font-size:0.6rem;color:var(--texto-mute);letter-spacing:1.5px;text-transform:uppercase;margin:20px 0 10px;display:flex;justify-content:space-between;align-items:center}
+.seccion-titulo button{background:none;border:none;color:var(--ambar);font-size:0.62rem;letter-spacing:1px;cursor:pointer;text-transform:uppercase}
+.card{background:var(--noche-2);border:1px solid var(--linea);border-radius:14px;padding:16px;margin-bottom:10px}
+.fila{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--linea);font-size:0.82rem}
+.fila:last-child{border-bottom:none}
+.fila .lbl{color:var(--texto-sec)}
+.fila .val{font-weight:600;font-family:'JetBrains Mono',monospace;text-align:right}
+.liq-fecha{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ambar);margin-bottom:6px;display:flex;justify-content:space-between}
+.empty{text-align:center;padding:32px 20px;color:var(--texto-mute);font-size:0.85rem}
+.empty .ico{font-size:2rem;margin-bottom:10px;opacity:.5}
+.nota{font-size:0.62rem;color:var(--texto-mute);text-align:center;padding:16px 20px 24px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Cargando -->
+  <div class="centro" id="pCargando">
+    <div class="login-logo">TU<span>NIM</span></div>
+    <div class="login-sub">Portal del propietario</div>
+    <div class="msg">Conectando…</div>
+  </div>
+
+  <!-- Entrar con Google -->
+  <div class="centro hidden" id="pLogin">
+    <div class="login-logo">TU<span>NIM</span></div>
+    <div class="login-sub">Portal del propietario</div>
+    <div class="msg">Entra con la cuenta de Google que registraste con <strong>ACCESVIAL</strong>.</div>
+    <button class="btn-google" id="btnGoogle">
+      <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.2 5.5-4.7 7.2l7.5 5.8c4.4-4.1 7-10.1 7-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C1 16.4 0 20.1 0 24s1 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+      Entrar con Google
+    </button>
+    <div class="error hidden" id="loginError"></div>
+  </div>
+
+  <!-- Sin acceso -->
+  <div class="centro hidden" id="pSinAcceso">
+    <div class="login-logo">TU<span>NIM</span></div>
+    <div class="login-sub">Sin acceso</div>
+    <div class="msg" id="sinAccesoTxt">Esta cuenta aún no tiene acceso.</div>
+    <button class="btn-sec" id="btnOtraCuenta">Usar otra cuenta</button>
+  </div>
+
+  <!-- App -->
+  <div class="hidden" id="pApp" style="flex:1;flex-direction:column">
+    <div class="header">
+      <div>
+        <div class="header-marca">TU<span>NIM</span></div>
+        <div class="header-quien" id="headerQuien">—</div>
+      </div>
+      <button class="btn-salir" id="btnSalir">Salir</button>
+    </div>
+
+    <div class="placas" id="placas"></div>
+
+    <div class="pulso-wrap off" id="pulsoWrap">
+      <div class="pulso"></div>
+      <div class="pulso-txt" id="estadoSync">Conectando con el turno</div>
+    </div>
+
+    <div class="contenido">
+      <div id="datosLive"></div>
+
+      <div class="seccion-titulo"><span>Liquidaciones recientes</span><button id="btnRefLiq">Actualizar</button></div>
+      <div id="liquidaciones"></div>
+    </div>
+
+    <div class="nota">Solo lectura. Los datos los registra el conductor desde TUNIM; los gastos del día los declara él al cerrar el turno.</div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
+         onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, getDocs }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+  authDomain: "tunim-9064e.firebaseapp.com",
+  projectId: "tunim-9064e",
+  storageBucket: "tunim-9064e.firebasestorage.app",
+  messagingSenderId: "948598556990",
+  appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+};
+
+// App con NOMBRE propio: su sesión de Google queda separada de la sesión
+// anónima del conductor (index.html). Entrar o salir aquí NO afecta al
+// registro de pasajeros en este mismo navegador.
+const app  = initializeApp(firebaseConfig, "propietario");
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dinero = n => "$" + Number(n || 0).toLocaleString("es-CO");
+
+let perfil = null;        // documento usuarios/{correo}
+let placaActual = null;
+let unsubVeh = null, unsubTurno = null;
+
+function ver(id){
+  ["pCargando","pLogin","pSinAcceso","pApp"].forEach(p => $(p).classList.toggle("hidden", p !== id));
+  $("pApp").style.display = (id === "pApp") ? "flex" : "";
+}
+
+// Fecha de hoy en Colombia (UTC-5), igual que diaKey() de la app del conductor
+function hoyColombia(){
+  const d = new Date(Date.now() - 5 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+// ── ENTRADA ──
+const proveedor = new GoogleAuthProvider();
+proveedor.setCustomParameters({ prompt: "select_account" });
+
+$("btnGoogle").addEventListener("click", async () => {
+  $("loginError").classList.add("hidden");
+  try{
+    await signInWithPopup(auth, proveedor);
+  }catch(e){
+    if(e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment"){
+      try{ await signInWithRedirect(auth, proveedor); return; }catch(e2){ e = e2; }
+    }
+    if(e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+    $("loginError").textContent = "No se pudo entrar con Google (" + (e.code || "error") + ").";
+    $("loginError").classList.remove("hidden");
+  }
+});
+
+getRedirectResult(auth).catch(() => {});
+
+async function salir(){
+  detener();
+  perfil = null; placaActual = null;
+  try{ await signOut(auth); }catch(e){}
+}
+$("btnSalir").addEventListener("click", salir);
+$("btnOtraCuenta").addEventListener("click", salir);
+
+onAuthStateChanged(auth, async user => {
+  detener();
+  if(!user){ ver("pLogin"); return; }
+  ver("pCargando");
+  const correo = (user.email || "").toLowerCase();
+  if(!correo || !user.emailVerified){
+    mostrarSinAcceso("Google no pudo verificar el correo de esta cuenta.");
+    return;
+  }
+  try{
+    const snap = await getDoc(doc(db, "usuarios", correo));
+    if(!snap.exists() || snap.data().activo === false){
+      mostrarSinAcceso("La cuenta <strong>" + esc(correo) + "</strong> aún no tiene acceso. Pide al administrador de TUNIM que la registre.");
+      return;
+    }
+    perfil = snap.data();
+    perfil.correo = correo;
+    iniciarApp();
+  }catch(e){
+    console.warn("Error leyendo usuario:", e);
+    mostrarSinAcceso("No se pudo comprobar tu acceso. Revisa tu conexión e inténtalo de nuevo.");
+  }
+});
+
+function mostrarSinAcceso(html){
+  $("sinAccesoTxt").innerHTML = html;
+  ver("pSinAcceso");
+}
+
+// ── APP ──
+function iniciarApp(){
+  const placas = Array.isArray(perfil.placas) ? perfil.placas.filter(Boolean) : [];
+  $("headerQuien").textContent = (perfil.nombre ? perfil.nombre + " · " : "") + perfil.correo;
+  ver("pApp");
+  if(!placas.length){
+    $("placas").innerHTML = "";
+    $("datosLive").innerHTML = '<div class="empty"><div class="ico">🚌</div>Tu cuenta no tiene placas asignadas todavía.</div>';
+    $("liquidaciones").innerHTML = "";
+    estado("Sin placas", false);
+    return;
+  }
+  $("placas").innerHTML = placas.map(p => `<button class="chip" data-placa="${esc(p)}">${esc(p)}</button>`).join("");
+  $("placas").querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => elegirPlaca(b.dataset.placa)));
+  elegirPlaca(placas[0]);
+}
+
+function estado(txt, vivo){
+  $("estadoSync").textContent = txt;
+  $("pulsoWrap").classList.toggle("off", !vivo);
+}
+
+function detener(){
+  if(unsubVeh){ unsubVeh(); unsubVeh = null; }
+  if(unsubTurno){ unsubTurno(); unsubTurno = null; }
+}
+
+function elegirPlaca(placa){
+  placaActual = placa;
+  document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.placa === placa));
+  detener();
+  $("datosLive").innerHTML = "";
+  estado("Conectando con el turno", false);
+  cargarLiquidaciones();
+
+  // 1) vehiculos/{placa}.turnoActivoHoyId  2) turnos_activos/{id} en vivo
+  let idEscuchado = null;
+  unsubVeh = onSnapshot(doc(db, "vehiculos", placa), snap => {
+    const id = snap.exists() ? snap.data().turnoActivoHoyId : null;
+    if(id === idEscuchado) return;
+    idEscuchado = id;
+    if(unsubTurno){ unsubTurno(); unsubTurno = null; }
+    if(!id){ sinTurno(); return; }
+    unsubTurno = onSnapshot(doc(db, "turnos_activos", id), s => pintarTurno(s), err => {
+      console.warn(err); estado("Error de conexión", false);
+    });
+  }, err => { console.warn(err); estado("Error de conexión", false); });
+}
+
+function sinTurno(msg){
+  estado("Sin turno hoy", false);
+  $("datosLive").innerHTML = '<div class="empty"><div class="ico">🚌</div>' + esc(msg || "El conductor aún no ha iniciado turno hoy") + '</div>';
+}
+
+function pintarTurno(snap){
+  if(!snap.exists()){ sinTurno("Aún no hay registros del día"); return; }
+  const d = snap.data();
+  if(d.fecha !== hoyColombia()){ sinTurno("El conductor aún no ha iniciado turno hoy"); return; }
+
+  const activo = (d.estadoTurno === "Activo");
+  estado(activo ? "Turno en vivo" : "Turno " + esc(d.estadoTurno || ""), activo);
+
+  const ts = d.ultimaActualizacion || d.actualizadoEn;
+  let hora = "—";
+  if(ts && typeof ts.toDate === "function"){
+    hora = ts.toDate().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bogota" });
+  }
+
+  $("datosLive").innerHTML = `
+    <div class="metric-grid">
+      <div class="metric-card"><div class="metric-lbl">Pasajeros hoy</div><div class="metric-val" style="color:var(--verde)">${esc(d.totalPasajeros || 0)}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Recaudado hoy</div><div class="metric-val" style="color:var(--ambar)">${esc(dinero(d.totalRecaudo))}</div></div>
+    </div>
+    <div class="seccion-titulo"><span>Turno de hoy</span></div>
+    <div class="card">
+      <div class="fila"><span class="lbl">Conductor</span><span class="val">${esc(d.nombreConductor || "—")}</span></div>
+      <div class="fila"><span class="lbl">Inicio</span><span class="val">${esc(d.horaInicio || "—")}</span></div>
+      <div class="fila"><span class="lbl">Viaje actual</span><span class="val">${esc(d.viajeActual || 1)} de 3</span></div>
+      <div class="fila"><span class="lbl">Origen detectado</span><span class="val">${esc(d.origenOperativo || "—")}</span></div>
+      <div class="fila"><span class="lbl">Destino detectado</span><span class="val">${esc(d.destinoOperativo || "—")}</span></div>
+      <div class="fila"><span class="lbl">Última actualización</span><span class="val">${esc(hora)}</span></div>
+    </div>`;
+}
+
+// ── LIQUIDACIONES (turnos ya cerrados) ──
+async function cargarLiquidaciones(){
+  const placa = placaActual;
+  const cont = $("liquidaciones");
+  cont.innerHTML = '<div class="empty">Cargando…</div>';
+  try{
+    const snap = await getDocs(query(collection(db, "liquidaciones"), where("placa", "==", placa)));
+    if(placa !== placaActual) return;
+    const lista = snap.docs.map(s => ({ id: s.id, ...s.data() }))
+      .sort((a, b) => String(b.idTurno || b.id).localeCompare(String(a.idTurno || a.id)))
+      .slice(0, 10);
+    if(!lista.length){
+      cont.innerHTML = '<div class="empty"><div class="ico">🧾</div>Aún no hay turnos cerrados para esta placa</div>';
+      return;
+    }
+    cont.innerHTML = lista.map(l => {
+      // La fecha del turno sale del idTurno (TUN-AAAAMMDD-PLACA-CEDULA)
+      const m = /^TUN-(\d{4})(\d{2})(\d{2})-/.exec(l.idTurno || l.id || "");
+      const fecha = m ? m[1] + "-" + m[2] + "-" + m[3] : (l.fecha || "—");
+      return `<div class="card">
+        <div class="liq-fecha"><span>${esc(fecha)}</span><span>${esc(l.pax || 0)} pasajeros</span></div>
+        <div class="fila"><span class="lbl">Conductor</span><span class="val">${esc(l.nombreConductor || "—")}</span></div>
+        <div class="fila"><span class="lbl">Total recaudado</span><span class="val">${esc(dinero(l.total))}</span></div>
+        <div class="fila"><span class="lbl">Gastos declarados</span><span class="val">${esc(dinero(l.totalGastos))}</span></div>
+        <div class="fila"><span class="lbl">Neto</span><span class="val" style="color:var(--verde)">${esc(dinero(l.neto))}</span></div>
+      </div>`;
+    }).join("");
+  }catch(e){
+    console.warn("Error liquidaciones:", e);
+    cont.innerHTML = '<div class="empty">No se pudieron cargar las liquidaciones</div>';
+  }
+}
+$("btnRefLiq").addEventListener("click", cargarLiquidaciones);
+
+// Si la conexión tarda en responder, no dejar la pantalla de "Conectando"
+setTimeout(() => { if(!$("pCargando").classList.contains("hidden")) ver("pLogin"); }, 10000);
+</script>
+</body>
+</html>
