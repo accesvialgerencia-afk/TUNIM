@@ -116,6 +116,15 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
 .tag.cor{background:var(--rojo-suave);color:var(--rojo)}
 .msg-ok{color:var(--verde);font-size:0.74rem;margin-top:8px}
 .msg-mal{color:var(--rojo);font-size:0.74rem;margin-top:8px}
+.org{margin:0 0 6px}
+.org-nodo{background:var(--noche-2);border:1px solid var(--linea);border-radius:12px;padding:12px 14px}
+.org-nivel{font-size:0.55rem;color:var(--texto-mute);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.org-nom{font-weight:700;font-size:0.92rem}
+.org-det{font-size:0.66rem;color:var(--texto-sec);margin-top:2px;line-height:1.5}
+.org-hijos{margin-left:14px;padding-left:12px;border-left:2px solid var(--linea);margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.org-placa{font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;color:var(--ambar)}
+.org-aviso{font-size:0.62rem;color:var(--rojo);margin-top:4px;line-height:1.5}
+.org-cond{background:var(--noche-1);border:1px solid var(--linea);border-radius:10px;padding:9px 12px;font-size:0.76rem}
 </style>
 </head>
 <body>
@@ -164,6 +173,7 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
       <button class="tab on" data-tab="hoy">Hoy</button>
       <button class="tab" data-tab="mes">Mes</button>
       <button class="tab" data-tab="mant">Mant.</button>
+      <button class="tab" data-tab="equipo">Equipo</button>
     </div>
 
     <div id="panelHoy">
@@ -209,6 +219,14 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
         </div>
         <select class="mes-sel" id="mantMes" style="margin-top:6px"></select>
         <div id="mantLista"></div>
+      </div>
+    </div>
+
+    <div id="panelEquipo" class="hidden">
+      <div class="contenido">
+        <div class="seccion-titulo"><span>Estructura</span><button id="btnEquipoAct">Actualizar</button></div>
+        <div id="equipoCont"></div>
+        <div class="mini">Los conductores salen de la producción real de cada placa en los últimos 60 días (incluye turnos de prueba anteriores al inicio de la comisión). Un conductor que no haya manejado esa placa no aparece. Cada nodo viene de un vínculo guardado en Firestore; los avisos en rojo marcan vínculos que faltan.</div>
       </div>
     </div>
 
@@ -911,12 +929,110 @@ function descargarMantCsv(){
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-// ── Pestañas Hoy / Mes / Mant. ──
+// ══════════════════════════════════════════════════════════════
+// EQUIPO / ORGANIGRAMA (12 oct 2026) — solo lectura
+// Empresa → Propietario → Vehículo → Conductores, con vínculos reales:
+//  · propietario y placas: usuarios/{correo}
+//  · vehículo y empresa:   vehiculos/{placa}.empresaId, empresas/{id}
+//  · conductores: quienes tienen producción real en esa placa (liquidaciones
+//    y turnos_activos) en los últimos 60 días. No se lee la colección
+//    conductores (se identifica por un código de la cédula).
+// ══════════════════════════════════════════════════════════════
+const VENTANA_DIAS = 60;
+function restarDias(fechaIso, n){
+  const d = new Date(fechaIso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+const nombreEmpresa = id => String(id).charAt(0).toUpperCase() + String(id).slice(1);
+
+async function cargarEquipo(){
+  const cont = $("equipoCont");
+  cont.innerHTML = '<div class="empty">Cargando…</div>';
+  try{
+    const placas = Array.isArray(perfil.placas) ? perfil.placas.filter(Boolean) : [];
+    if(!placas.length){ cont.innerHTML = '<div class="empty">Tu cuenta no tiene placas asignadas.</div>'; return; }
+    const desde = restarDias(hoyColombia(), VENTANA_DIAS);
+
+    const datos = await Promise.all(placas.map(async placa => {
+      const [sv, sl, st] = await Promise.all([
+        getDoc(doc(db, "vehiculos", placa)),
+        getDocs(query(collection(db, "liquidaciones"), where("placa", "==", placa))),
+        getDocs(query(collection(db, "turnos_activos"), where("placa", "==", placa)))
+      ]);
+      const veh = sv.exists() ? sv.data() : null;
+      const vistos = new Set(), porCed = new Map();
+      const sumar = (id, fechaResp, nombre, ced, produjo) => {
+        const fecha = fechaDeId(id, fechaResp);
+        if(!fecha || fecha < desde || vistos.has(id) || !produjo) return;
+        vistos.add(id);
+        const c = cedulaDeId(id, ced);
+        if(!porCed.has(c)) porCed.set(c, { cedula: c, nombre: "", dias: 0, ultimo: "" });
+        const g = porCed.get(c);
+        g.dias++; if(nombre && !g.nombre) g.nombre = nombre;
+        if(fecha > g.ultimo) g.ultimo = fecha;
+      };
+      sl.forEach(s => { const d = s.data(); sumar(d.idTurno || s.id, d.fecha, d.nombreConductor, d.cedulaConductor, true); });
+      st.forEach(s => { const d = s.data(); sumar(d.idTurno || s.id, d.fecha, d.nombreConductor, d.cedulaConductor, (Number(d.totalRecaudo) || 0) > 0); });
+      return { placa, veh, conductores: [...porCed.values()].sort((a, b) => b.dias - a.dias) };
+    }));
+
+    // empresa de cada placa (si falta empresaId se asume autoboy y se avisa)
+    const ids = [...new Set(datos.map(d => (d.veh && d.veh.empresaId) || "autoboy"))];
+    const nombres = {};
+    await Promise.all(ids.map(async id => {
+      try{
+        const se = await getDoc(doc(db, "empresas", id));
+        nombres[id] = (se.exists() && (se.data().nombre || se.data().razonSocial)) || nombreEmpresa(id);
+      }catch(e){ nombres[id] = nombreEmpresa(id); }
+    }));
+
+    const porEmpresa = new Map();
+    datos.forEach(d => { const e = (d.veh && d.veh.empresaId) || "autoboy"; if(!porEmpresa.has(e)) porEmpresa.set(e, []); porEmpresa.get(e).push(d); });
+
+    const rol = perfil.rol === "admin" ? "Administrador" : "Propietario";
+    let totCond = new Set();
+    datos.forEach(d => d.conductores.forEach(c => totCond.add(c.cedula)));
+
+    const vehHtml = d => {
+      const avisos = [];
+      if(!d.veh) avisos.push("No existe el documento de este vehículo en Firestore.");
+      else if(!d.veh.empresaId) avisos.push("El vehículo no tiene empresa guardada; se asume Autoboy.");
+      if(!d.conductores.length) avisos.push("Sin conductores con producción en los últimos " + VENTANA_DIAS + " días.");
+      return `<div class="org-nodo"><div class="org-nivel">Vehículo</div><div class="org-nom org-placa">${esc(d.placa)}</div>
+        ${avisos.map(a => `<div class="org-aviso">⚠ ${esc(a)}</div>`).join("")}
+        ${d.conductores.length ? `<div class="org-hijos">` + d.conductores.map(c =>
+          `<div class="org-cond"><div class="org-nivel">Conductor</div><strong>${esc(c.nombre || "Sin nombre")}</strong>
+           <div class="org-det">${esc(ocultaCedula(c.cedula))} · ${esc(c.dias)} día${c.dias > 1 ? "s" : ""} · último: ${esc(c.ultimo)}</div></div>`).join("") + `</div>` : ""}
+      </div>`;
+    };
+
+    let h = `<div class="metric-grid">
+      <div class="metric-card"><div class="metric-lbl">Vehículos</div><div class="metric-val">${datos.length}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Conductores</div><div class="metric-val" style="color:var(--verde)">${totCond.size}</div></div>
+    </div><div class="org">`;
+    porEmpresa.forEach((lista, empId) => {
+      h += `<div class="org-nodo" style="margin-bottom:10px"><div class="org-nivel">Empresa</div><div class="org-nom">${esc(nombres[empId] || nombreEmpresa(empId))}</div>
+        <div class="org-hijos"><div class="org-nodo"><div class="org-nivel">${esc(rol)}</div><div class="org-nom">${esc(perfil.nombre || perfil.correo)}</div>
+          <div class="org-det">${esc(perfil.correo)}</div>
+          <div class="org-hijos">${lista.map(vehHtml).join("")}</div></div></div></div>`;
+    });
+    h += `</div>`;
+    cont.innerHTML = h;
+  }catch(e){
+    console.warn("Error equipo:", e);
+    cont.innerHTML = '<div class="empty">No se pudo cargar la estructura. Revisa tu conexión.</div>';
+  }
+}
+$("btnEquipoAct").addEventListener("click", cargarEquipo);
+
+// ── Pestañas Hoy / Mes / Mant. / Equipo ──
 function verTab(t){
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("panelHoy").classList.toggle("hidden", t !== "hoy");
   $("panelMes").classList.toggle("hidden", t !== "mes");
   $("panelMant").classList.toggle("hidden", t !== "mant");
+  $("panelEquipo").classList.toggle("hidden", t !== "equipo");
+  if(t === "equipo") cargarEquipo();
   if(t === "mes") cargarMes();
   if(t === "mant"){ limpiarFormMant(); $("mantMsg").innerHTML = ""; cargarMant(); }
 }
