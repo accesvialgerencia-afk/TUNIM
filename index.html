@@ -4292,21 +4292,25 @@ async function cargarAvance(){
       getDocs(query(collection(db,"turnos_activos"),where("placa","==",placa),where("cedulaConductor","==",ced)))
     ]),10000);
     const hoy=diaKey(), mes=hoy.slice(0,7);
+    // Datos de prueba: lo anterior a vigenteDesde (config_comision) no cuenta.
+    const desde=/^\d{4}-\d{2}-\d{2}$/.test(String(cfg.vigenteDesde||""))?String(cfg.vigenteDesde):"";
     const fechaDe=(id,resp)=>{const m=/^TUN-(\d{4})(\d{2})(\d{2})-/.exec(id||"");return m?m[1]+"-"+m[2]+"-"+m[3]:(resp||"");};
     const dias=new Map();
     sl.forEach(x=>{const d=x.data(),id=d.idTurno||x.id,f=fechaDe(id,d.fecha);
       if(f.slice(0,7)!==mes) return;
+      if(desde&&f<desde) return;
       const bruto=Number(d.total)||0,g=Number(d.totalGastos)||0;
       dias.set(id,{id,fecha:f,estado:"cerrado",bruto,gastos:g});});
     st.forEach(x=>{const d=x.data(),id=d.idTurno||x.id;
       if(dias.has(id)) return;
       const f=fechaDe(id,d.fecha);
       if(f.slice(0,7)!==mes) return;
+      if(desde&&f<desde) return;
       const bruto=Number(d.totalRecaudo)||0;
       if(!(bruto>0)) return;
       dias.set(id,{id,fecha:f,estado:f<hoy?"pendiente":"en curso",bruto,gastos:0});});
     const lista=[...dias.values()].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    if(!lista.length){msg("Aún no hay producción registrada este mes en este vehículo.");return;}
+    if(!lista.length){msg("Aún no hay producción registrada"+(desde?" desde el "+desde:" este mes")+" en este vehículo.");return;}
     const bruto=lista.reduce((t,d)=>t+d.bruto,0), gastos=lista.reduce((t,d)=>t+d.gastos,0);
     const neto=bruto-gastos, n=lista.length;
     const r=avCalcular(cfg,n,neto);
@@ -4331,7 +4335,7 @@ async function cargarAvance(){
       +'<div style="display:flex;justify-content:space-between"><span style="color:var(--muted2)">Meta diaria</span><strong>'+avDinero(r.metaDiaria)+'</strong></div>'
       +(faltaSig>0?'<div style="display:flex;justify-content:space-between"><span style="color:var(--muted2)">Para el siguiente tramo</span><strong>'+avDinero(faltaSig)+'</strong></div>':'')
       +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:8px 0 2px"><div style="height:100%;width:'+pct+'%;background:'+(cumple?'var(--verde)':'var(--amarillo)')+'"></div></div>'
-      +'<div style="font-size:0.6rem;color:var(--muted);line-height:1.5">'+pctReal+'% de tu meta mínima ('+avDinero(r.metaMinima)+'), proporcional a tus '+n+' días en este vehículo.</div>'
+      +'<div style="font-size:0.6rem;color:var(--muted);line-height:1.5">'+pctReal+'% de tu meta mínima ('+avDinero(r.metaMinima)+'), proporcional a tus '+n+' días en este vehículo.'+(desde?' Cuenta desde el '+avEsc(desde)+'.':'')+'</div>'
       +'<div style="font-size:0.58rem;color:var(--muted);line-height:1.5;margin-top:8px">Es una estimación. Los gastos que declares al cerrar el turno reducen tu neto. La comisión oficial la confirma el propietario al cierre del mes.</div>'
       +'</div></div>';
     cont.innerHTML=h;
