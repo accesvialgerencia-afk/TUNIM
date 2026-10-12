@@ -103,6 +103,19 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
 .cie-top{display:flex;justify-content:space-between;gap:8px;font-family:'JetBrains Mono',monospace}
 .cie-sub{color:var(--texto-mute);margin-top:3px;line-height:1.5}
 .cie-btn{width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1px solid var(--linea-fuerte);background:var(--noche-2);color:var(--texto);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:0.95rem;cursor:pointer}
+.f-lbl{display:block;font-size:0.58rem;color:var(--texto-mute);letter-spacing:1px;text-transform:uppercase;margin:10px 0 4px}
+.f-in{width:100%;background:var(--noche-1);border:1px solid var(--linea);border-radius:10px;color:var(--texto);padding:10px 12px;font-family:'Inter',sans-serif;font-size:0.85rem}
+.f-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-pri{width:100%;margin-top:14px;padding:12px;border-radius:12px;border:none;background:var(--ambar);color:#1A1200;font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:1.05rem;cursor:pointer}
+.btn-pri:disabled{opacity:.5}
+.btn-mini{background:none;border:1px solid var(--linea);color:var(--texto-sec);font-size:0.6rem;padding:4px 10px;border-radius:12px;cursor:pointer;margin-left:6px}
+.mant-fila{padding:9px 0;border-bottom:1px solid var(--linea);font-size:0.74rem}
+.mant-fila:last-child{border-bottom:none}
+.mant-anulado{opacity:.45;text-decoration:line-through}
+.tag.pre{background:var(--verde-suave);color:var(--verde)}
+.tag.cor{background:var(--rojo-suave);color:var(--rojo)}
+.msg-ok{color:var(--verde);font-size:0.74rem;margin-top:8px}
+.msg-mal{color:var(--rojo);font-size:0.74rem;margin-top:8px}
 </style>
 </head>
 <body>
@@ -150,6 +163,7 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
     <div class="tabs">
       <button class="tab on" data-tab="hoy">Hoy</button>
       <button class="tab" data-tab="mes">Mes</button>
+      <button class="tab" data-tab="mant">Mant.</button>
     </div>
 
     <div id="panelHoy">
@@ -173,7 +187,32 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
       </div>
     </div>
 
-    <div class="nota">Solo lectura. Los datos los registra el conductor desde TUNIM; los gastos del día los declara él al cerrar el turno.</div>
+    <div id="panelMant" class="hidden">
+      <div class="contenido">
+        <div class="seccion-titulo"><span id="mantTitulo">Registrar mantenimiento</span></div>
+        <div class="card">
+          <div class="f-2">
+            <div><label class="f-lbl" for="mFecha">Fecha</label><input class="f-in" type="date" id="mFecha"></div>
+            <div><label class="f-lbl" for="mTipo">Tipo</label><select class="f-in" id="mTipo"><option>Preventivo</option><option>Correctivo</option></select></div>
+          </div>
+          <label class="f-lbl" for="mCat">Categoría</label><select class="f-in" id="mCat"></select>
+          <label class="f-lbl" for="mAtajo">Atajo (opcional)</label><select class="f-in" id="mAtajo"><option value="">—</option></select>
+          <label class="f-lbl" for="mDesc">Descripción</label><input class="f-in" type="text" id="mDesc" maxlength="200" placeholder="Qué se hizo">
+          <div class="f-2">
+            <div><label class="f-lbl" for="mValor">Valor (COP)</label><input class="f-in" type="number" id="mValor" inputmode="numeric" min="1" placeholder="480000"></div>
+            <div><label class="f-lbl" for="mKm">Kilometraje (opcional)</label><input class="f-in" type="number" id="mKm" inputmode="numeric" min="0" placeholder="215000"></div>
+          </div>
+          <label class="f-lbl" for="mCac">Referencia CAC (opcional)</label><input class="f-in" type="text" id="mCac" maxlength="40" placeholder="CAC-000123">
+          <button class="btn-pri" id="btnMantGuardar">Guardar</button>
+          <button class="cie-btn" id="btnMantCancelar" style="display:none">Cancelar edición</button>
+          <div id="mantMsg"></div>
+        </div>
+        <select class="mes-sel" id="mantMes" style="margin-top:6px"></select>
+        <div id="mantLista"></div>
+      </div>
+    </div>
+
+    <div class="nota">Producción: solo lectura; la registra el conductor desde TUNIM y los gastos del día los declara él al cerrar el turno. Mantenimiento: lo registras tú.</div>
   </div>
 
 </div>
@@ -183,7 +222,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebas
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
          onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, getDocs, getAggregateFromServer, sum, count }
+import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, getDocs, getAggregateFromServer, sum, count, addDoc, updateDoc, serverTimestamp, deleteField }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -313,6 +352,7 @@ function elegirPlaca(placa){
   estado("Conectando con el turno", false);
   cargarLiquidaciones();
   if(!$("panelMes").classList.contains("hidden")) cargarMes();
+  if(!$("panelMant").classList.contains("hidden")){ limpiarFormMant(); cargarMant(); }
 
   // 1) vehiculos/{placa}.turnoActivoHoyId  2) turnos_activos/{id} en vivo
   let idEscuchado = null;
@@ -700,12 +740,185 @@ function descargarCsv(){
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-// ── Pestañas Hoy / Mes ──
+// ══════════════════════════════════════════════════════════════
+// MANTENIMIENTO (11 oct 2026) — colección mantenimientos
+// Registro de costos por placa: categoría, tipo, descripción, valor, fecha,
+// km y referencia CAC (opcionales). No se borra: se anula (anulado = true).
+// La evidencia (fotos y facturas) vive en CAC, no en TUNIM.
+// ══════════════════════════════════════════════════════════════
+const CATS = {
+  "Motor y lubricación": ["Cambio de aceite","Check motor"],
+  "Frenos": ["Mantenimiento del sistema de frenos","Freno de ahogo"],
+  "Suspensión y dirección": ["Terminales brazo corto","Terminales brazo largo","Bujes","Muelles"],
+  "Llantas y alineación": ["Cambio de llantas","Alineación"],
+  "Transmisión": ["Guayas de cambios","Bujes del sistema de cambios"],
+  "Refrigeración": ["Radiador"],
+  "Sistema eléctrico": ["Arranque","Alternador","Baterías"],
+  "Carrocería, puertas y luces": ["Booster de puerta","Luces de carrocería","Luces frontales","Latonería y pintura"],
+  "Otro": []
+};
+let mantEditando = null;      // id del documento que se está editando
+let mantDatos = [];           // registros de la placa actual
+
+$("mCat").innerHTML = Object.keys(CATS).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+function llenarAtajos(){
+  const l = CATS[$("mCat").value] || [];
+  $("mAtajo").innerHTML = '<option value="">—</option>' + l.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
+}
+$("mCat").addEventListener("change", llenarAtajos);
+$("mAtajo").addEventListener("change", () => { if($("mAtajo").value) $("mDesc").value = $("mAtajo").value; });
+llenarAtajos();
+$("mantMes").innerHTML = opcionesMes().map(o => `<option value="${o.valor}">${esc(o.texto)}</option>`).join("");
+$("mantMes").addEventListener("change", pintarMant);
+
+function limpiarFormMant(){
+  mantEditando = null;
+  $("mFecha").value = hoyColombia(); $("mTipo").value = "Preventivo";
+  $("mCat").value = Object.keys(CATS)[0]; llenarAtajos();
+  $("mDesc").value = ""; $("mValor").value = ""; $("mKm").value = ""; $("mCac").value = "";
+  $("mantTitulo").textContent = "Registrar mantenimiento";
+  $("btnMantGuardar").textContent = "Guardar";
+  $("btnMantCancelar").style.display = "none";
+}
+$("btnMantCancelar").addEventListener("click", () => { limpiarFormMant(); $("mantMsg").innerHTML = ""; });
+
+function mantMsg(t, ok){ $("mantMsg").innerHTML = `<div class="${ok ? "msg-ok" : "msg-mal"}">${esc(t)}</div>`; }
+
+async function cargarMant(){
+  const placa = placaActual;
+  $("mantLista").innerHTML = '<div class="empty">Cargando…</div>';
+  if(!$("mFecha").value) $("mFecha").value = hoyColombia();
+  try{
+    const snap = await getDocs(query(collection(db, "mantenimientos"), where("placa", "==", placa)));
+    if(placa !== placaActual) return;
+    mantDatos = snap.docs.map(s => ({ id: s.id, ...s.data() }));
+    pintarMant();
+  }catch(e){
+    console.warn("Error mantenimientos:", e);
+    $("mantLista").innerHTML = '<div class="empty">No se pudo cargar el mantenimiento. Revisa tu conexión o que las reglas nuevas estén publicadas.</div>';
+  }
+}
+
+function pintarMant(){
+  const mes = $("mantMes").value;
+  const lista = mantDatos.filter(m => String(m.fecha || "").slice(0, 7) === mes)
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const vivos = lista.filter(m => m.anulado !== true);
+  if(!lista.length){
+    $("mantLista").innerHTML = '<div class="empty"><div class="ico">🔧</div>No hay mantenimientos registrados en este mes para ' + esc(placaActual) + '</div>';
+    return;
+  }
+  const total = vivos.reduce((t, m) => t + (Number(m.valor) || 0), 0);
+  const pre = vivos.filter(m => m.tipo === "Preventivo").reduce((t, m) => t + (Number(m.valor) || 0), 0);
+  const cor = vivos.filter(m => m.tipo === "Correctivo").reduce((t, m) => t + (Number(m.valor) || 0), 0);
+  const porCat = {};
+  vivos.forEach(m => { const c = m.categoria || "Otro"; porCat[c] = porCat[c] || { v: 0, n: 0 }; porCat[c].v += Number(m.valor) || 0; porCat[c].n++; });
+  let h = `<div class="metric-grid">
+      <div class="metric-card"><div class="metric-lbl">Total del mes</div><div class="metric-val" style="color:var(--ambar)">${esc(dinero(total))}</div></div>
+      <div class="metric-card"><div class="metric-lbl">Registros</div><div class="metric-val">${vivos.length}</div></div>
+    </div>
+    <div class="card">
+      <div class="fila"><span class="lbl">Preventivo</span><span class="val" style="color:var(--verde)">${esc(dinero(pre))}</span></div>
+      <div class="fila"><span class="lbl">Correctivo</span><span class="val" style="color:var(--rojo)">${esc(dinero(cor))}</span></div>
+    </div>
+    <div class="seccion-titulo"><span>Por categoría</span></div><div class="card">` +
+    Object.entries(porCat).sort((a, b) => b[1].v - a[1].v).map(([c, x]) =>
+      `<div class="fila"><span class="lbl">${esc(c)} (${x.n})</span><span class="val">${esc(dinero(x.v))}</span></div>`).join("") +
+    `</div><div class="seccion-titulo"><span>Registros</span></div><div class="card">` +
+    lista.map(m => {
+      const anu = m.anulado === true;
+      return `<div class="mant-fila"><div class="${anu ? "mant-anulado" : ""}">
+        <div class="cie-top"><span>${esc(m.fecha)} <span class="tag ${m.tipo === "Preventivo" ? "pre" : "cor"}">${esc(m.tipo)}</span></span><span>${esc(dinero(m.valor))}</span></div>
+        <div class="cie-sub">${esc(m.categoria)} · ${esc(m.descripcion)}${m.km != null ? " · " + esc(Number(m.km).toLocaleString("es-CO")) + " km" : ""}${m.referenciaCac ? " · " + esc(m.referenciaCac) : ""}</div></div>
+        ${anu ? '<div class="cie-sub">Anulado</div>' : `<div style="margin-top:6px"><button class="btn-mini" data-ed="${esc(m.id)}">Editar</button><button class="btn-mini" data-an="${esc(m.id)}">Anular</button></div>`}</div>`;
+    }).join("") + `</div><button class="cie-btn" id="btnMantCsv">Descargar para Excel</button>`;
+  $("mantLista").innerHTML = h;
+  $("mantLista").querySelectorAll("[data-ed]").forEach(b => b.addEventListener("click", () => editarMant(b.dataset.ed)));
+  $("mantLista").querySelectorAll("[data-an]").forEach(b => b.addEventListener("click", () => anularMant(b.dataset.an)));
+  $("btnMantCsv").addEventListener("click", descargarMantCsv);
+}
+
+function editarMant(id){
+  const m = mantDatos.find(x => x.id === id); if(!m) return;
+  mantEditando = id;
+  $("mFecha").value = m.fecha; $("mTipo").value = m.tipo; $("mCat").value = m.categoria; llenarAtajos();
+  $("mDesc").value = m.descripcion; $("mValor").value = m.valor;
+  $("mKm").value = m.km != null ? m.km : ""; $("mCac").value = m.referenciaCac || "";
+  $("mantTitulo").textContent = "Editando registro";
+  $("btnMantGuardar").textContent = "Guardar cambios";
+  $("btnMantCancelar").style.display = "";
+  $("mantMsg").innerHTML = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function anularMant(id){
+  if(!confirm("¿Anular este registro? No se borra, pero deja de sumar.")) return;
+  try{
+    await updateDoc(doc(db, "mantenimientos", id), { anulado: true, editadoEn: serverTimestamp() });
+    await cargarMant();
+  }catch(e){ console.warn(e); mantMsg("No se pudo anular. Revisa tu conexión y que tengas permiso sobre esta placa.", false); }
+}
+
+$("btnMantGuardar").addEventListener("click", async () => {
+  const placa = placaActual;
+  const fecha = $("mFecha").value, cat = $("mCat").value, tipo = $("mTipo").value;
+  const desc = $("mDesc").value.trim(), valor = Math.round(Number($("mValor").value));
+  const kmTxt = $("mKm").value.trim(), cac = $("mCac").value.trim();
+  if(!placa) return mantMsg("Elige una placa arriba.", false);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return mantMsg("Pon la fecha del servicio.", false);
+  if(desc.length < 3) return mantMsg("Escribe una descripción (mínimo 3 letras).", false);
+  if(!(valor > 0)) return mantMsg("El valor debe ser mayor a 0.", false);
+  if(valor > 100000000) return mantMsg("El valor es demasiado alto. Revísalo.", false);
+  if(kmTxt && !(Number(kmTxt) >= 0)) return mantMsg("El kilometraje no es válido.", false);
+  const datos = { placa, fecha, categoria: cat, tipo, descripcion: desc, valor };
+  if(kmTxt) datos.km = Math.round(Number(kmTxt));
+  if(cac) datos.referenciaCac = cac;
+  const btn = $("btnMantGuardar"); btn.disabled = true;
+  try{
+    if(mantEditando){
+      const previo = mantDatos.find(x => x.id === mantEditando);
+      const nuevo = { ...datos, anulado: previo.anulado === true, creadoPor: previo.creadoPor, creadoEn: previo.creadoEn, editadoEn: serverTimestamp() };
+      if(!kmTxt) nuevo.km = deleteField();               // si lo vació, se quita
+      if(!cac) nuevo.referenciaCac = deleteField();
+      await updateDoc(doc(db, "mantenimientos", mantEditando), nuevo);
+      mantMsg("Cambios guardados.", true);
+    }else{
+      await addDoc(collection(db, "mantenimientos"), { ...datos, anulado: false, creadoPor: perfil.correo, creadoEn: serverTimestamp() });
+      mantMsg("Registro guardado.", true);
+    }
+    limpiarFormMant();
+    $("mantMes").value = fecha.slice(0, 7) in Object.fromEntries(opcionesMes().map(o => [o.valor, 1])) ? fecha.slice(0, 7) : $("mantMes").value;
+    await cargarMant();
+  }catch(e){
+    console.warn("Error guardando mantenimiento:", e);
+    mantMsg("No se pudo guardar. Revisa tu conexión y que las reglas nuevas estén publicadas.", false);
+  }finally{ btn.disabled = false; }
+});
+
+function descargarMantCsv(){
+  const mes = $("mantMes").value;
+  const lista = mantDatos.filter(m => String(m.fecha || "").slice(0, 7) === mes && m.anulado !== true)
+    .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  const cel = v => { const t = String(v == null ? "" : v); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const cols = ["Fecha","Placa","Categoría","Tipo","Descripción","Valor","Kilometraje","Referencia CAC"];
+  const filas = lista.map(m => [m.fecha, m.placa, m.categoria, m.tipo, m.descripcion, m.valor, m.km != null ? m.km : "", m.referenciaCac || ""]);
+  filas.push(["TOTAL","","","","", lista.reduce((t, m) => t + (Number(m.valor) || 0), 0), "", ""]);
+  const csv = "\ufeff" + [cols, ...filas].map(f => f.map(cel).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "mantenimiento-" + placaActual + "-" + mes + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ── Pestañas Hoy / Mes / Mant. ──
 function verTab(t){
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("panelHoy").classList.toggle("hidden", t !== "hoy");
   $("panelMes").classList.toggle("hidden", t !== "mes");
+  $("panelMant").classList.toggle("hidden", t !== "mant");
   if(t === "mes") cargarMes();
+  if(t === "mant"){ limpiarFormMant(); $("mantMsg").innerHTML = ""; cargarMant(); }
 }
 document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => verTab(b.dataset.tab)));
 $("mesSel").innerHTML = opcionesMes().map(o => `<option value="${o.valor}">${esc(o.texto)}</option>`).join("");
