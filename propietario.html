@@ -87,6 +87,22 @@ html,body{width:100%;min-height:100vh;background:var(--noche-0);color:var(--text
 .tag.tit{background:var(--verde-suave);color:var(--verde)}
 .tag.rel{background:rgba(74,144,217,.15);color:#4A90D9}
 .mini{font-size:0.62rem;color:var(--texto-mute);line-height:1.5;margin-top:6px}
+
+.vrf-btn{width:100%;margin-top:14px;padding:12px;border-radius:12px;border:1px solid var(--ambar);background:none;color:var(--ambar);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:1rem;cursor:pointer}
+.vrf-btn:disabled{opacity:.5;cursor:default}
+.vrf-res{display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:20px}
+.vrf-ok{background:var(--verde-suave);color:var(--verde)}
+.vrf-mal{background:var(--rojo-suave);color:var(--rojo)}
+.vrf-nd{background:var(--noche-1);color:var(--texto-mute);border:1px solid var(--linea)}
+.vrf-fila{padding:8px 0;border-bottom:1px solid var(--linea);font-size:0.74rem}
+.vrf-fila:last-child{border-bottom:none}
+.vrf-top{display:flex;justify-content:space-between;gap:8px;align-items:center;font-family:'JetBrains Mono',monospace}
+.vrf-det{color:var(--texto-mute);margin-top:3px;line-height:1.5}
+.cie-fila{padding:9px 0;border-bottom:1px solid var(--linea);font-size:0.74rem}
+.cie-fila:last-child{border-bottom:none}
+.cie-top{display:flex;justify-content:space-between;gap:8px;font-family:'JetBrains Mono',monospace}
+.cie-sub{color:var(--texto-mute);margin-top:3px;line-height:1.5}
+.cie-btn{width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1px solid var(--linea-fuerte);background:var(--noche-2);color:var(--texto);font-family:'Bebas Neue',sans-serif;letter-spacing:2px;font-size:0.95rem;cursor:pointer}
 </style>
 </head>
 <body>
@@ -167,7 +183,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebas
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
          onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, getDocs }
+import { getFirestore, doc, getDoc, onSnapshot, collection, query, where, getDocs, getAggregateFromServer, sum, count }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -478,24 +494,31 @@ async function cargarMes(){
     if(placa !== placaActual || mes !== $("mesSel").value) return;
 
     const hoy = hoyColombia();
+    // Datos de prueba: lo anterior a vigenteDesde (config_comision) no cuenta.
+    const desde = /^\d{4}-\d{2}-\d{2}$/.test(String(cfg.vigenteDesde || "")) ? String(cfg.vigenteDesde) : "";
     const dias = new Map(); // idTurno -> día
     sl.forEach(s => {
       const d = s.data(), id = d.idTurno || s.id;
       const fecha = fechaDeId(id, d.fecha);
       if(fecha.slice(0, 7) !== mes) return;
+      if(desde && fecha < desde) return;
       const bruto = Number(d.total) || 0, gastos = Number(d.totalGastos) || 0;
       dias.set(id, { id, fecha, cedula: cedulaDeId(id, d.cedulaConductor), nombre: d.nombreConductor || "",
-        estado: "cerrado", bruto, gastos, neto: bruto - gastos });
+        estado: "cerrado", bruto, gastos, neto: bruto - gastos,
+        pax: Number(d.pax) || 0,
+        detalle: (d.gastos && typeof d.gastos === "object" && !Array.isArray(d.gastos)) ? d.gastos : {} });
     });
     st.forEach(s => {
       const d = s.data(), id = d.idTurno || s.id;
       if(dias.has(id)) return;                       // ya está cerrado
       const fecha = fechaDeId(id, d.fecha);
       if(fecha.slice(0, 7) !== mes) return;
+      if(desde && fecha < desde) return;
       const bruto = Number(d.totalRecaudo) || 0;
       if(!(bruto > 0)) return;                       // sin producción no cuenta
       dias.set(id, { id, fecha, cedula: cedulaDeId(id, d.cedulaConductor), nombre: d.nombreConductor || "",
-        estado: fecha < hoy ? "pendiente" : "en curso", bruto, gastos: 0, neto: bruto });
+        estado: fecha < hoy ? "pendiente" : "en curso", bruto, gastos: 0, neto: bruto,
+        pax: Number(d.totalPasajeros) || 0, detalle: {} });
     });
 
     // 3) Agrupar por conductor (cédula) en este vehículo
@@ -523,11 +546,12 @@ async function cargarMes(){
     const curso = [...dias.values()].filter(d => d.estado === "en curso");
 
     if(!lista.length){
-      cont.innerHTML = '<div class="empty"><div class="ico">📅</div>No hay producción registrada en este mes para esta placa</div>';
+      cont.innerHTML = '<div class="empty"><div class="ico">📅</div>No hay producción registrada en este mes para esta placa' + (desde ? '<br><span style="font-size:0.7rem">Solo cuenta desde ' + esc(desde) + '.</span>' : '') + '</div>';
       return;
     }
 
     let html = "";
+    if(desde) html += `<div class="mini" style="margin:0 0 10px">Solo cuenta desde ${esc(desde)}. Lo anterior se considera prueba y se ignora.</div>`;
     if(pend.length){
       html += `<div class="alerta"><strong>${pend.length} día${pend.length > 1 ? "s" : ""} sin cerrar</strong>
         Cuentan como bruto provisional, sin gastos, hasta que el conductor envíe el reporte.` +
@@ -563,11 +587,117 @@ async function cargarMes(){
     }).join("");
 
     if(curso.length) html += `<div class="mini">Incluye el turno de hoy, aún en curso.</div>`;
+    const NOMGAS = { acpm: "ACPM", desayuno: "Desayuno", almuerzo: "Almuerzo", timbres: "Timbres", parqueo: "Parqueo", otros: "Otros" };
+    const ordenados = [...dias.values()].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    html += `<div class="seccion-titulo"><span>Cierres del mes</span></div><div class="card">` + ordenados.map(d => {
+      const gd = Object.keys(NOMGAS).filter(k => Number(d.detalle[k]) > 0).map(k => NOMGAS[k] + " " + dinero(d.detalle[k])).join(" · ");
+      const est = d.estado === "cerrado" ? "" : (d.estado === "pendiente" ? " · sin cerrar" : " · en curso");
+      return `<div class="cie-fila"><div class="cie-top"><span>${esc(d.fecha)}${esc(est)}</span><span style="color:var(--verde)">${esc(dinero(d.neto))}</span></div>
+        <div class="cie-sub">${esc(d.nombre || ocultaCedula(d.cedula))} · ${esc(d.pax)} pasajeros · bruto ${esc(dinero(d.bruto))} · gastos ${esc(dinero(d.gastos))}${gd ? "<br>" + esc(gd) : ""}</div></div>`;
+    }).join("") + `</div>
+      <button class="cie-btn" id="btnCsv">Descargar para Excel</button>`;
+    html += `<button class="vrf-btn" id="btnVerif">Verificar producción del mes</button>
+      <div class="mini">Compara el total de cada día con la suma de los pasajeros registrados uno a uno. Cuesta muy pocas lecturas.</div>
+      <div id="verif"></div>`;
     cont.innerHTML = html;
+    mesActual = { placa, mes, dias: [...dias.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)) };
+    $("btnVerif").addEventListener("click", verificarMes);
+    $("btnCsv").addEventListener("click", descargarCsv);
   }catch(e){
     console.warn("Error resumen mensual:", e);
     cont.innerHTML = '<div class="empty">No se pudo calcular el resumen. Revisa tu conexión.</div>';
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// VERIFICACIÓN DE PRODUCCIÓN (11 oct 2026)
+// El total de cada cierre lo calcula el celular del conductor. Aquí se
+// contrasta con la suma de los pasajeros guardados uno a uno en Firestore
+// (consulta de agregación: ~1 lectura por cada 1.000 pasajeros).
+//  · coincide            → el cierre y el detalle dicen lo mismo
+//  · cierre MENOR        → el detalle suma más de lo que se reportó
+//  · cierre MAYOR        → faltan pasajeros en el detalle (p. ej. sin señal)
+//  · sin detalle         → no hay pasajeros guardados con ese turno
+// ══════════════════════════════════════════════════════════════
+let mesActual = null;
+
+async function sumarPasajeros(idTurno){
+  const r = await getAggregateFromServer(
+    query(collection(db, "pasajeros"), where("idTurno", "==", idTurno)),
+    { n: count(), suma: sum("precio") });
+  const d = r.data();
+  return { n: Number(d.n) || 0, suma: Number(d.suma) || 0 };
+}
+
+async function verificarMes(){
+  if(!mesActual) return;
+  const { placa, mes, dias } = mesActual;
+  const btn = $("btnVerif"), out = $("verif");
+  btn.disabled = true; btn.textContent = "Verificando…";
+  out.innerHTML = "";
+  try{
+    const res = new Array(dias.length);
+    let i = 0;
+    const lote = async () => {
+      while(i < dias.length){
+        const k = i++;
+        try{ res[k] = await sumarPasajeros(dias[k].id); }
+        catch(e){ console.warn("verif", dias[k].id, e); res[k] = null; }
+      }
+    };
+    await Promise.all([lote(), lote(), lote(), lote()]);
+    if(placa !== placaActual || mes !== $("mesSel").value) return;
+
+    let ok = 0, mal = 0, nd = 0, err = 0, dif = 0;
+    const filas = dias.map((d, k) => {
+      const r = res[k];
+      let tag, cls, det;
+      if(!r){ err++; tag = "NO SE PUDO"; cls = "vrf-nd"; det = "No se pudo consultar este día."; }
+      else if(r.n === 0){ nd++; tag = "SIN DETALLE"; cls = "vrf-nd"; det = "No hay pasajeros guardados con este turno."; }
+      else if(r.suma === d.bruto){ ok++; tag = "COINCIDE"; cls = "vrf-ok"; det = r.n + " pasajeros · " + dinero(r.suma); }
+      else{
+        mal++;
+        const x = r.suma - d.bruto; dif += x;
+        tag = "REVISAR"; cls = "vrf-mal";
+        det = (x > 0 ? "Los pasajeros suman " + dinero(x) + " MÁS que el cierre. Posible producción no reportada."
+                     : "Los pasajeros suman " + dinero(-x) + " MENOS que el cierre. Pueden faltar pasajeros en el detalle.") +
+              " Detalle: " + r.n + " pasajeros · " + dinero(r.suma) + ".";
+      }
+      const est = d.estado === "cerrado" ? "" : (d.estado === "pendiente" ? " · sin cerrar" : " · en curso");
+      return `<div class="vrf-fila"><div class="vrf-top"><span>${esc(d.fecha)}${esc(est)}</span><span class="vrf-res ${cls}">${tag}</span></div>
+        <div class="vrf-top" style="margin-top:3px"><span style="color:var(--texto-sec)">${esc(d.nombre || ocultaCedula(d.cedula))}</span><span>${esc(dinero(d.bruto))}</span></div>
+        <div class="vrf-det">${esc(det)}</div></div>`;
+    }).join("");
+
+    const resumen = mal === 0 && err === 0
+      ? `<div class="mini" style="color:var(--verde)">✓ ${ok} de ${dias.length} días coinciden${nd ? " · " + nd + " sin detalle" : ""}.</div>`
+      : `<div class="alerta"><strong>${mal} día${mal === 1 ? "" : "s"} para revisar${err ? " · " + err + " sin consultar" : ""}</strong>
+         Diferencia neta (pasajeros − cierres): ${esc((dif < 0 ? "−" : "+") + dinero(Math.abs(dif)))}. Revisa con el conductor antes de pagar la comisión.</div>`;
+    out.innerHTML = `<div class="seccion-titulo"><span>Verificación día por día</span></div>${resumen}<div class="card">${filas}</div>`;
+  }catch(e){
+    console.warn("Error verificación:", e);
+    out.innerHTML = '<div class="empty">No se pudo verificar. Revisa tu conexión.</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = "Verificar de nuevo";
+  }
+}
+
+// ── Descarga para Excel (CSV con ; y UTF-8, abre directo en Excel es-CO) ──
+function descargarCsv(){
+  if(!mesActual) return;
+  const { placa, mes, dias } = mesActual;
+  const cel = v => { const t = String(v == null ? "" : v); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const cols = ["Fecha","Placa","Conductor","Cédula","Estado","Pasajeros","Recaudo bruto","Gastos","Neto","ACPM","Desayuno","Almuerzo","Timbres","Parqueo","Otros"];
+  const filas = dias.map(d => [d.fecha, placa, d.nombre, ocultaCedula(d.cedula), d.estado, d.pax, d.bruto, d.gastos, d.neto,
+    ...["acpm","desayuno","almuerzo","timbres","parqueo","otros"].map(k => Number(d.detalle && d.detalle[k]) || 0)]);
+  const sum = i => filas.reduce((t, f) => t + (Number(f[i]) || 0), 0);
+  filas.push(["TOTAL","","","","", sum(5), sum(6), sum(7), sum(8), sum(9), sum(10), sum(11), sum(12), sum(13), sum(14)]);
+  const csv = "\ufeff" + [cols, ...filas].map(f => f.map(cel).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "cierres-" + placa + "-" + mes + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 // ── Pestañas Hoy / Mes ──
