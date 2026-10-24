@@ -107,6 +107,10 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
 /* ── MODAL CONFIGURACIÓN INICIAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:24px;width:100%;max-width:380px}
+/* ── Ventana de inicio en pantallas bajas (tablet horizontal / teclado): desplazable y con INICIAR siempre visible ── */
+#modalConfig{overflow-y:auto}
+#modalConfig .modal-box{max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overscroll-behavior:contain}
+#modalConfig #btnIniciarTurno{position:sticky;bottom:0;z-index:2;box-shadow:0 -10px 14px var(--surface)}
 .modal-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:3px;color:var(--amarillo);margin-bottom:4px}
 .modal-sub{font-size:0.7rem;color:var(--muted);margin-bottom:20px;letter-spacing:1px}
 .modal-label{font-size:0.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block}
@@ -664,6 +668,13 @@ html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);fon
     <div class="alertas-log" id="alertasLog">
       <div class="hist-vacio">Sin alertas — inicia el temporizador</div>
     </div>
+    <div style="margin:10px 12px 0;padding:8px 10px;border:1px dashed var(--border2,#243040);border-radius:10px;font-size:0.62rem;color:var(--muted)">
+      🔧 Registro de diagnóstico de dirección <span id="diagContador">0 filas guardadas en este aparato</span>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button type="button" onclick="diagDescargar()" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--amarillo);background:transparent;color:var(--amarillo);font-size:0.62rem">⬇ Descargar CSV</button>
+        <button type="button" onclick="diagBorrar()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border2,#243040);background:transparent;color:var(--muted);font-size:0.62rem">Borrar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1083,6 +1094,83 @@ const META_MIN=28, MULTA1=10000, MULTAN=5000;
 // Detecta por GPS el inicio y fin de cada tramo, sin multas —
 // solo acompañamiento motivador para llegar a tiempo.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// DIAGNÓSTICO DE DIRECCIÓN (23 oct 2026) — SOLO REGISTRA, NO CAMBIA NINGUNA DECISIÓN
+// Guarda EN ESTE APARATO (localStorage, nunca en Firestore):
+//   CAMBIO: cada vez que cambia direccionRuta, con la función que lo causó.
+//   TRAZA : posición cada ~8 s con el punto de ida y de vuelta más cercano.
+// Se descarga como CSV desde la pestaña Tiempo. Todo va en try/catch para
+// que un fallo del diagnóstico jamás afecte el recorrido.
+// ══════════════════════════════════════════════════════════════
+var DIAG_KEY="tunim_diag_dir_v1", DIAG_MAX=2500, diagFilas=[], diagUltTraza=0, diagUltGuardado=0, diagCargado=false;
+function diagCargar(){
+  if(diagCargado) return; diagCargado=true;
+  try{ diagFilas=JSON.parse(localStorage.getItem(DIAG_KEY)||"[]"); if(!Array.isArray(diagFilas)) diagFilas=[]; }catch(e){ diagFilas=[]; }
+}
+function diagGuardar(forzar){
+  try{
+    const ahora=Date.now();
+    if(!forzar && ahora-diagUltGuardado<30000) return;
+    diagUltGuardado=ahora;
+    if(diagFilas.length>DIAG_MAX) diagFilas=diagFilas.slice(diagFilas.length-DIAG_MAX);
+    localStorage.setItem(DIAG_KEY, JSON.stringify(diagFilas));
+    diagActualizarContador();
+  }catch(e){}
+}
+function diagHora(){
+  try{ const d=new Date(Date.now()-5*3600000); return d.toISOString().replace("T"," ").slice(0,19); }catch(e){ return ""; }
+}
+function diagMasCercano(lat,lng,lista){
+  let mejor={n:"",d:Infinity,i:-1};
+  lista.forEach((p,i)=>{ const d=distanciaMetros(lat,lng,p.lat,p.lng); if(d<mejor.d) mejor={n:p.nombre,d:d,i:i}; });
+  return mejor;
+}
+function diagTraza(pos){
+  try{
+    diagCargar();
+    if(!configTurno||!configTurno.placa) return;
+    const ahora=Date.now();
+    if(ahora-diagUltTraza<8000) return;
+    diagUltTraza=ahora;
+    const ci=diagMasCercano(pos.lat,pos.lng,TRAZADO_IDA), cv=diagMasCercano(pos.lat,pos.lng,TRAZADO_VUELTA);
+    let gracia="";
+    if(momentoUltimaGeocercaOperativa){ const m=(ahora-momentoUltimaGeocercaOperativa)/60000; if(m<MINUTOS_GRACIA_GEOCERCA_OPERATIVA) gracia=m.toFixed(1); }
+    diagFilas.push(["TRAZA",diagHora(),pos.lat.toFixed(6),pos.lng.toFixed(6),Math.round(pos.precision||0),direccionRuta,
+      (typeof direccionParaVoz==="function"?direccionParaVoz():""),sentidoTrazadoActual||"",indiceTrazadoActual,gracia,
+      ci.n,Math.round(ci.d),ci.i,cv.n,Math.round(cv.d),cv.i,""]);
+    diagGuardar(false);
+  }catch(e){}
+}
+function diagCambio(fuente,detalle){
+  try{
+    diagCargar();
+    const p=(typeof posicionActual!=="undefined"&&posicionActual)?posicionActual:null;
+    diagFilas.push(["CAMBIO",diagHora(),p?p.lat.toFixed(6):"",p?p.lng.toFixed(6):"",p?Math.round(p.precision||0):"",direccionRuta,
+      (typeof direccionParaVoz==="function"?direccionParaVoz():""),sentidoTrazadoActual||"",indiceTrazadoActual,"","","","","","","",fuente+(detalle?" · "+detalle:"")]);
+    diagGuardar(true);
+  }catch(e){}
+}
+function diagActualizarContador(){
+  try{ const el=document.getElementById("diagContador"); if(el) el.textContent=diagFilas.length+" filas guardadas en este aparato"; }catch(e){}
+}
+function diagDescargar(){
+  try{
+    diagCargar();
+    const cab=["tipo","hora_colombia","lat","lng","precision_m","direccion_geografica","direccion_para_voz","sentido_trazado","indice_trazado","gracia_min","ida_punto_cercano","ida_dist_m","ida_idx","vuelta_punto_cercano","vuelta_dist_m","vuelta_idx","causa"];
+    const esc=v=>{ v=String(v==null?"":v); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+    const csv="\uFEFF"+[cab].concat(diagFilas).map(f=>f.map(esc).join(";")).join("\r\n");
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+    a.download="tunim-diagnostico-ruta-"+diagHora().slice(0,10)+".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ mostrarToast("No se pudo descargar el registro","alerta"); }
+}
+function diagBorrar(){
+  if(!confirm("¿Borrar el registro de diagnóstico de este aparato?")) return;
+  diagFilas=[]; diagGuardar(true);
+}
+window.addEventListener("load",()=>{ diagCargar(); diagActualizarContador(); });
+
 const TRAMOS_TIEMPO = [
   {
     id: "villaPaul_timbreMosquera",
@@ -1619,6 +1707,7 @@ function detenerGPS(){
 
 // Verificar en qué geocercas está el bus
 function verificarGeocercas(pos){
+  diagTraza(pos);
   // ── Detección de dirección — 3 sep 2026 ──
   // La detección por trazado real (puntos conocidos del corredor)
   // tiene prioridad. Si el bus está lejos de todo punto conocido,
@@ -1719,6 +1808,7 @@ function alEntrarGeocercaOperativa(geo){
       momentoUltimaGeocercaOperativa = Date.now();
       if(geo.sentido !== direccionRuta){
         direccionRuta = geo.sentido;
+        diagCambio("geocerca_origen",geo.id);
         historialLatitudes = [];
         cambiosDireccionPendientes = 0;
         console.log("🧭 Dirección sincronizada por geocerca operativa:", geo.sentido);
@@ -1781,6 +1871,7 @@ function alEntrarGeocercaOperativa(geo){
       momentoUltimaGeocercaOperativa = Date.now();
       if(geo.sentido !== direccionRuta){
         direccionRuta = geo.sentido;
+        diagCambio("geocerca_destino",geo.id);
         historialLatitudes = [];
         cambiosDireccionPendientes = 0;
         console.log("🧭 Dirección sincronizada por geocerca DESTINO:", geo.sentido);
@@ -2266,6 +2357,21 @@ async function _guardarConfigTurnoInterno(){
   }
   if(!fecha){ mostrarToast("⚠ Selecciona la fecha","alerta"); return; }
 
+  // ── FECHA SEGURA (12 oct 2026) ──
+  // Un turno con fecha futura (error de año al teclear, p. ej. 2027 en vez
+  // de 2026) no suma al avance del mes ni a la comisión. Se bloquea aquí.
+  // Una fecha de otro año pero pasada pide confirmación.
+  try{
+    const hoyReal = diaKey();
+    if(fecha > hoyReal){
+      mostrarToast("⚠ La fecha no puede ser futura. Hoy es "+hoyReal+" — revisa el año","alerta");
+      return;
+    }
+    if(fecha.slice(0,4) !== hoyReal.slice(0,4)){
+      if(!confirm("La fecha del turno ("+fecha+") es de otro año. ¿Es correcta?")) return;
+    }
+  }catch(e){}
+
   // ── Resolver número de orden → placa real ANTES de generar idTurno ──
   // Si hay Firebase disponible, se resuelve de inmediato (rápido, 1-2 lecturas).
   // Si no hay conexión, se usa el identificador tal cual como respaldo local.
@@ -2380,6 +2486,7 @@ async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
             if(geoOrigen.sentido){
               if(!sentidoInicioTurno) sentidoInicioTurno = geoOrigen.sentido;
               direccionRuta = geoOrigen.sentido;
+              diagCambio("restaurar_turno",geoOrigen.id);
               momentoUltimaGeocercaOperativa = Date.now();
             }
           }
@@ -2407,6 +2514,7 @@ function editarConfig(){
   if(est) est.style.display="none";
   document.getElementById("inputPlaca").value=configTurno.placa||"";
   document.getElementById("inputFecha").value=configTurno.fechaInicio||"";
+  try{ document.getElementById("inputFecha").max=diaKey(); }catch(e){}   // 12 oct 2026: sin fechas futuras
   document.getElementById("inputHoraInicio").value=configTurno.horaInicio||"";
   m.style.display="flex";
 }
@@ -2438,6 +2546,7 @@ window.addEventListener("load",()=>{
   // día siguiente a partir de las 7pm hora Colombia. ──
   const hoy=diaKey();
   document.getElementById("inputFecha").value=hoy;
+  try{ document.getElementById("inputFecha").max=diaKey(); }catch(e){}   // 12 oct 2026: sin fechas futuras
   document.getElementById("inputHoraInicio").value=new Date().toTimeString().slice(0,5);
 
   // ── CONTINUIDAD DE TURNO DEL MISMO DÍA (3 sep 2026) ──
@@ -3158,6 +3267,7 @@ function detectarDireccion(lat){
       // Requiere varias lecturas consecutivas en el mismo sentido antes de cambiar
       if(cambiosDireccionPendientes >= CONFIRMACIONES_REQUERIDAS){
         direccionRuta = propuesta;
+        diagCambio("latitud","diff "+diff.toFixed(5));
         cambiosDireccionPendientes = 0;
         historialLatitudes = []; // reiniciar para la próxima detección
         const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
@@ -3204,6 +3314,7 @@ function detectarDireccionPorTrazado(lat, lng){
     momentoUltimaGeocercaOperativa = Date.now();
     if(direccionRuta !== "vuelta"){
       direccionRuta = "vuelta";
+      diagCambio("rombo_la_mesa","");
       historialLatitudes = [];
       cambiosDireccionPendientes = 0;
       console.log("🧭 Dirección CONFIRMADA por punto de alta confianza: Rombo La Mesa → vuelta");
@@ -3305,6 +3416,7 @@ function detectarDireccionPorTrazado(lat, lng){
       indiceTrazadoActual = idxDetectado;
       if(sentidoDetectado !== direccionRuta){
         direccionRuta = sentidoDetectado;
+        diagCambio("trazado",trazado[idxDetectado].nombre+" idx"+idxDetectado);
         historialLatitudes = []; // limpiar detector viejo, ya no es la fuente principal
         const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
         mostrarToast(msg, "");
@@ -3326,6 +3438,7 @@ function ciclarModoAudio(){
 
 function cambiarDireccionManual(){
   direccionRuta = direccionRuta === "ida" ? "vuelta" : "ida";
+  diagCambio("boton_manual","");
   historialLatitudes = [];
   // ── CORRECCIÓN CRÍTICA: reset de pasajeros a bordo al cambiar dirección ──
   pasajerosABordo = [];
@@ -3651,10 +3764,12 @@ function avisarTurnoSinCerrar(){
     if(pax===0||!f||f===diaKey()) return;
     fechaTurnoSinCerrar=f;
     caja.style.display="block";
-    caja.innerHTML="⚠ Tienes un turno sin cerrar del <b>"+f+"</b> con "+pax+" pasajeros. "
-      +"Escribe la <b>fecha de ese turno</b> abajo, entra, ve a <b>Reportes</b>, registra los gastos y toca "
-      +"<b>ENVIAR REPORTE Y CERRAR TURNO</b>. Después se inicia el turno de hoy."
-      +'<br><button type="button" onclick="usarFechaTurnoSinCerrar()" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--amarillo);background:transparent;color:var(--amarillo);cursor:pointer">Usar la fecha del turno sin cerrar</button>';
+    caja.style.padding="6px 8px"; caja.style.margin="4px 0"; caja.style.fontSize="0.66rem"; caja.style.lineHeight="1.25";
+    const bs="padding:3px 8px;border-radius:7px;border:1px solid var(--amarillo);background:transparent;color:var(--amarillo);font-size:0.62rem;cursor:pointer;white-space:nowrap";
+    caja.innerHTML='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="flex:1;min-width:130px">⚠ Turno sin cerrar: <b>'+f+'</b> · '+pax+' pax</span>'
+      +'<button type="button" onclick="usarFechaTurnoSinCerrar()" style="'+bs+'">Usar esa fecha</button>'
+      +'<button type="button" onclick="var d=document.getElementById(\'avisoPasos\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="'+bs+'">¿Cómo?</button></div>'
+      +'<div id="avisoPasos" style="display:none;margin-top:5px">Pon esa fecha, entra, ve a <b>Reportes</b>, registra gastos y toca <b>ENVIAR REPORTE Y CERRAR TURNO</b>. Después inicia el de hoy.</div>';
   }catch(e){}
 }
 function usarFechaTurnoSinCerrar(){
@@ -4295,8 +4410,9 @@ async function cargarAvance(){
     // Datos de prueba: lo anterior a vigenteDesde (config_comision) no cuenta.
     const desde=/^\d{4}-\d{2}-\d{2}$/.test(String(cfg.vigenteDesde||""))?String(cfg.vigenteDesde):"";
     const fechaDe=(id,resp)=>{const m=/^TUN-(\d{4})(\d{2})(\d{2})-/.exec(id||"");return m?m[1]+"-"+m[2]+"-"+m[3]:(resp||"");};
-    const dias=new Map();
+    const dias=new Map(); let futuras=0;
     sl.forEach(x=>{const d=x.data(),id=d.idTurno||x.id,f=fechaDe(id,d.fecha);
+      if(f>hoy){futuras++;return;}
       if(f.slice(0,7)!==mes) return;
       if(desde&&f<desde) return;
       const bruto=Number(d.total)||0,g=Number(d.totalGastos)||0;
@@ -4304,13 +4420,14 @@ async function cargarAvance(){
     st.forEach(x=>{const d=x.data(),id=d.idTurno||x.id;
       if(dias.has(id)) return;
       const f=fechaDe(id,d.fecha);
+      if(f>hoy){if((Number(d.totalRecaudo)||0)>0)futuras++;return;}
       if(f.slice(0,7)!==mes) return;
       if(desde&&f<desde) return;
       const bruto=Number(d.totalRecaudo)||0;
       if(!(bruto>0)) return;
       dias.set(id,{id,fecha:f,estado:f<hoy?"pendiente":"en curso",bruto,gastos:0});});
     const lista=[...dias.values()].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    if(!lista.length){msg("Aún no hay producción registrada"+(desde?" desde el "+desde:" este mes")+" en este vehículo.");return;}
+    if(!lista.length){msg("Aún no hay producción registrada"+(desde?" desde el "+desde:" este mes")+" en este vehículo."+(futuras?" Hay "+futuras+" turno(s) con fecha futura que no cuentan.":""));return;}
     const bruto=lista.reduce((t,d)=>t+d.bruto,0), gastos=lista.reduce((t,d)=>t+d.gastos,0);
     const neto=bruto-gastos, n=lista.length;
     const r=avCalcular(cfg,n,neto);
@@ -4320,6 +4437,10 @@ async function cargarAvance(){
     const faltaSig=(r.tramo<4)?Math.max(0,Math.round(r.limites[r.tramo-1]-neto)):0;
     const mesTxt=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][Number(mes.slice(5,7))-1];
     let h="";
+    if(futuras){
+      h+='<div class="admin-card" style="border-color:var(--rojo)"><div style="padding:10px 14px;font-size:0.72rem;line-height:1.5;color:var(--rojo)"><strong>'
+        +futuras+(futuras>1?" turnos con fecha futura":" turno con fecha futura")+'</strong><br>No cuentan. Revisa que el año de la fecha de inicio sea el correcto.</div></div>';
+    }
     if(pend.length){
       h+='<div class="admin-card" style="border-color:var(--rojo)"><div style="padding:10px 14px;font-size:0.72rem;line-height:1.5;color:var(--rojo)"><strong>'
         +pend.length+(pend.length>1?" días sin cerrar":" día sin cerrar")+'</strong><br>Ciérralos para que cuenten completos: '
