@@ -2758,6 +2758,11 @@ async function guardarLiquidacionFirebase(resumen){
       // turno (día del recaudo) y día en que se cerró. `fecha` no cambia.
       fechaRecaudo:      configTurno.fechaInicio||"",
       fechaCierre:       diaKey(),
+      // 24 oct 2026 — Paso 4 (solo se agregan): `mes` = mes del DÍA EN QUE EMPEZÓ el turno
+      // (el que dice el idTurno, TUN-AAAAMMDD-...). Un turno que empieza el 31 y se cierra
+      // el 1.º cuenta en el mes en que empezó. cruzaMedianoche = se cerró otro día.
+      mes:               (/^TUN-(\d{4})(\d{2})\d{2}-/.exec(idTurnoLiq)||[]).slice(1,3).join("-") || String(configTurno.fechaInicio||"").slice(0,7),
+      cruzaMedianoche:   !!(configTurno.fechaInicio && configTurno.fechaInicio !== diaKey()),
       ...resumen,
       guardadoEn: serverTimestamp()
     },{merge:true});
