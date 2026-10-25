@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="google" content="notranslate">
+<title>TUNIM · Configuración de la empresa</title>
+<style>
+:root{--bg:#06090D;--surface:#0D1117;--surface2:#131920;--border2:#243040;--text:#E8EDF2;--muted:#5A6A7A;--muted2:#7A8A9A;--amarillo:#F5C800;--verde:#00C47A;--rojo:#E8354F}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh}
+.wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:1.5rem;letter-spacing:3px;color:var(--amarillo)}
+.sub{font-size:.7rem;color:var(--muted);letter-spacing:1px;margin:2px 0 14px}
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:.78rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);margin-bottom:8px}
+p,li{font-size:.8rem;line-height:1.45;color:var(--muted2)}
+button{font:600 .8rem system-ui;padding:11px 14px;border-radius:10px;border:1px solid var(--amarillo);background:var(--amarillo);color:#000;cursor:pointer}
+button.sec{background:transparent;color:var(--amarillo)}
+button:disabled{opacity:.4;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+td,th{padding:7px 4px;border-bottom:1px solid var(--border2);text-align:right}
+td:first-child,th:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:.68rem;letter-spacing:1px;text-transform:uppercase}
+.ok{color:var(--verde)}.mal{color:var(--rojo)}
+.hidden{display:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+pre{background:var(--surface2);border-radius:8px;padding:10px;font-size:.72rem;white-space:pre-wrap;color:var(--text);margin-top:8px}
+label{font-size:.76rem;color:var(--text);display:flex;gap:6px;align-items:center;margin:3px 0}
+#msg{font-size:.76rem;margin-top:8px;min-height:1em;color:var(--amarillo)}
+input,select{font:600 .85rem system-ui;padding:9px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);width:100%}
+.aviso{border-left:3px solid var(--rojo);padding:4px 8px;margin:4px 0;font-size:.78rem;color:var(--text)}
+.okl{border-left:3px solid var(--verde);padding:4px 8px;margin:4px 0;font-size:.78rem;color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TUNIM</h1>
+  <div class="sub">PASO 3 · CONFIGURACIÓN DE LA EMPRESA — SOLO LECTURA</div>
+  <div id="vCargando" class="card"><p>Cargando…</p></div>
+  <div id="vLogin" class="card hidden">
+    <h2>Entrar</h2>
+    <p>Esta página solo <b>lee</b>: no crea, cambia ni borra nada. Entra con la cuenta de Google de administrador.</p>
+    <div class="row"><button id="btnGoogle">Entrar con Google</button></div>
+    <div id="loginError" class="mal" style="font-size:.76rem;margin-top:8px"></div>
+  </div>
+  <div id="vSin" class="card hidden"><h2>Sin acceso</h2><p id="sinTxt"></p><div class="row"><button class="sec" id="btnOtra">Entrar con otra cuenta</button></div></div>
+  <div id="vApp" class="hidden">
+    <div class="card"><h2>Empresa</h2><select id="selEmp"></select></div>
+    <div class="card"><h2>Revisión de coherencia</h2><div id="chequeos"></div></div>
+    <div class="card"><h2>Valores guardados (config_comision)</h2><table id="tPub"></table></div>
+    <div class="card"><h2>Parte privada (config_comision_privada)</h2><p id="pPriv"></p><table id="tPriv"></table></div>
+    <div class="card"><h2>Simulador de tramos</h2>
+      <p>Escribe un neto mensual por vehículo y mira cuánto cae en cada tramo (comisión marginal, igual que el portal). Es solo una calculadora: no guarda nada.</p>
+      <input id="simNeto" inputmode="numeric" placeholder="Ej: 14150000">
+      <table id="tSim" style="margin-top:8px"></table>
+    </div>
+    <div class="card"><h2>¿Cómo se cambia un valor?</h2>
+      <p>Por ahora los cambios se hacen en la consola de Firebase (Firestore → <b>config_comision</b> → documento de la empresa), porque las reglas bloquean la escritura desde las páginas. Así ningún error de pantalla puede alterar comisiones. Después de cambiar, vuelve aquí y mira que la <b>revisión de coherencia</b> salga en verde.</p>
+      <div class="row"><button class="sec" id="btnCopiar">Copiar valores como JSON</button></div>
+      <div id="msg"></div>
+    </div>
+    <div class="row"><button class="sec" id="btnSalir">Salir</button></div>
+  </div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, collection, getDocs }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+  authDomain: "tunim-9064e.firebaseapp.com",
+  projectId: "tunim-9064e",
+  storageBucket: "tunim-9064e.firebasestorage.app",
+  messagingSenderId: "948598556990",
+  appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+};
+// App con nombre propio: no toca la sesión anónima del conductor en este navegador.
+const app  = initializeApp(firebaseConfig, "configempresa");
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+
+const ETQ = {nombre:"Nombre",diasTrabajoMes:"Días de trabajo del mes (base de la meta diaria)",tramo1Hasta:"Tramo 1 hasta (neto)",tramo1Pct:"Tramo 1 %",tramo2Hasta:"Tramo 2 hasta (neto)",tramo2Pct:"Tramo 2 %",tramo3Hasta:"Tramo 3 hasta (neto)",tramo3Pct:"Tramo 3 %",tramo4Pct:"Tramo 4 % (sobre el resto)",metaNetoMinimo:"Meta neta mínima del mes",metaNetoAlto:"Meta neta alta del mes",vigenteDesde:"Vigente desde",miAvanceActivo:"«Mi avance del mes» activo"};
+const dinero = n => "$" + Math.round(Number(n)||0).toLocaleString("es-CO");
+let CFG = {}, PRIV = null, EMP = "";
+function valor(k,v){
+  if(typeof v === "boolean") return v ? "Sí" : "No";
+  if(typeof v === "number" && /Hasta|meta|Meta/.test(k)) return dinero(v);
+  if(typeof v === "object" && v !== null) return esc(JSON.stringify(v));
+  return esc(v);
+}
+function filas(o){ return Object.keys(o).sort().map(k => `<tr><td>${esc(ETQ[k]||k)}</td><td>${valor(k,o[k])}</td></tr>`).join("") || "<tr><td>(vacío)</td><td></td></tr>"; }
+function chequear(c){
+  const out = [], mal = t => out.push(`<div class="aviso">⚠ ${t}</div>`);
+  const n = k => Number(c[k]);
+  const need = ["diasTrabajoMes","tramo1Hasta","tramo1Pct","tramo2Hasta","tramo2Pct","tramo3Hasta","tramo3Pct","tramo4Pct","metaNetoMinimo","metaNetoAlto"];
+  const falta = need.filter(k => c[k] == null || isNaN(n(k)));
+  if(falta.length) mal("Faltan o no son números: " + falta.map(k => ETQ[k]||k).join(", "));
+  else{
+    if(!(n("tramo1Hasta") < n("tramo2Hasta") && n("tramo2Hasta") < n("tramo3Hasta"))) mal("Los límites de los tramos deben ir de menor a mayor.");
+    const p = [n("tramo1Pct"),n("tramo2Pct"),n("tramo3Pct"),n("tramo4Pct")];
+    if(p.some(x => x < 0 || x > 100)) mal("Los porcentajes deben estar entre 0 y 100.");
+    if(!(p[0] <= p[1] && p[1] <= p[2] && p[2] <= p[3])) mal("Los porcentajes deberían subir de tramo en tramo (hoy no lo hacen).");
+    if(n("metaNetoMinimo") > n("metaNetoAlto")) mal("La meta mínima es mayor que la meta alta.");
+    if(!(n("diasTrabajoMes") >= 1 && n("diasTrabajoMes") <= 31)) mal("Los días de trabajo del mes deben estar entre 1 y 31.");
+  }
+  if(c.vigenteDesde != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(c.vigenteDesde))) mal("«Vigente desde» debe tener formato AAAA-MM-DD.");
+  if(c.miAvanceActivo != null && typeof c.miAvanceActivo !== "boolean") mal("«Mi avance» debe ser verdadero o falso (no texto).");
+  if(!out.length) out.push('<div class="okl">✔ Todo coherente: tramos ordenados, porcentajes válidos, metas en orden.</div>');
+  return out.join("");
+}
+function simular(){
+  const neto = Number($("simNeto").value.replace(/[^\d]/g,"")) || 0;
+  const c = CFG, lim = [Number(c.tramo1Hasta),Number(c.tramo2Hasta),Number(c.tramo3Hasta),Infinity], pct = [c.tramo1Pct,c.tramo2Pct,c.tramo3Pct,c.tramo4Pct].map(Number);
+  if(lim.slice(0,3).some(isNaN) || pct.some(isNaN)){ $("tSim").innerHTML = ""; return; }
+  let prev = 0, tot = 0, h = "<tr><th>Tramo</th><th>Dinero</th><th>%</th><th>Comisión</th></tr>";
+  lim.forEach((l,i) => { const en = Math.max(0, Math.min(neto,l) - prev), cm = en * pct[i] / 100; tot += cm; h += `<tr><td>${i+1}</td><td>${dinero(en)}</td><td>${pct[i]}%</td><td>${dinero(cm)}</td></tr>`; prev = l; });
+  $("tSim").innerHTML = h + `<tr><td><b>Total</b></td><td>${dinero(neto)}</td><td></td><td><b>${dinero(tot)}</b></td></tr>`;
+}
+async function cargar(){
+  EMP = $("selEmp").value; msg("");
+  const a = await getDoc(doc(db,"config_comision",EMP));
+  CFG = a.exists() ? a.data() : {};
+  $("chequeos").innerHTML = a.exists() ? chequear(CFG) : '<div class="aviso">⚠ Esta empresa no tiene documento en config_comision.</div>';
+  $("tPub").innerHTML = filas(CFG);
+  try{
+    const b = await getDoc(doc(db,"config_comision_privada",EMP));
+    PRIV = b.exists() ? b.data() : {};
+    $("pPriv").textContent = b.exists() ? "Cupón, mínimo del propietario y costos fijos." : "Esta empresa no tiene parte privada.";
+    $("tPriv").innerHTML = b.exists() ? filas(PRIV) : "";
+  }catch(e){ PRIV = null; $("pPriv").textContent = "No se pudo leer la parte privada."; $("tPriv").innerHTML = ""; }
+  simular();
+}
+async function iniciar(){
+  const ids = new Set(["autoboy"]);
+  try{ (await getDocs(collection(db,"vehiculos"))).docs.forEach(d => { const e = d.data().empresaId; if(e) ids.add(e); }); }catch(e){}
+  $("selEmp").innerHTML = [...ids].map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join("");
+  $("selEmp").onchange = cargar; $("simNeto").oninput = simular;
+  $("btnCopiar").onclick = async () => {
+    try{ await navigator.clipboard.writeText(JSON.stringify({config_comision:CFG, config_comision_privada:PRIV}, null, 2)); msg("Copiado."); }
+    catch(e){ msg("No se pudo copiar en este navegador."); }
+  };
+  ver("vApp"); cargar();
+}
+function ver(id){ ["vCargando","vLogin","vSin","vApp"].forEach(p => $(p).classList.toggle("hidden", p !== id)); }
+function sin(html){ $("sinTxt").innerHTML = html; ver("vSin"); }
+function msg(t){ $("msg").textContent = t || ""; }
+
+const proveedor = new GoogleAuthProvider();
+proveedor.setCustomParameters({ prompt: "select_account" });
+$("btnGoogle").addEventListener("click", async () => {
+  $("loginError").textContent = "";
+  try{ await signInWithPopup(auth, proveedor); }
+  catch(e){
+    if(e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment"){
+      try{ await signInWithRedirect(auth, proveedor); return; }catch(e2){ e = e2; }
+    }
+    if(e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+    $("loginError").textContent = "No se pudo entrar con Google (" + (e.code || "error") + ").";
+  }
+});
+getRedirectResult(auth).catch(() => {});
+async function salir(){ try{ await signOut(auth); }catch(e){} }
+$("btnSalir").addEventListener("click", salir);
+$("btnOtra").addEventListener("click", salir);
+
+onAuthStateChanged(auth, async user => {
+  if(!user){ ver("vLogin"); return; }
+  ver("vCargando");
+  const correo = (user.email || "").toLowerCase();
+  if(!correo || !user.emailVerified){ sin("Google no pudo verificar el correo de esta cuenta."); return; }
+  try{
+    const snap = await getDoc(doc(db, "usuarios", correo));
+    if(!snap.exists() || snap.data().activo === false || snap.data().rol !== "admin"){
+      sin("La cuenta <b>" + esc(correo) + "</b> no es de administrador. Esta pantalla es solo para el administrador de TUNIM.");
+      return;
+    }
+    iniciar();
+  }catch(e){ sin("No se pudo comprobar tu acceso. Revisa la conexión e inténtalo de nuevo."); }
+});
+</script>
+</body>
+</html>
