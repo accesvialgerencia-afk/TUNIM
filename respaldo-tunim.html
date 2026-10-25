@@ -74,7 +74,7 @@ label{font-size:.76rem;color:var(--text);display:flex;gap:6px;align-items:center
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, query, orderBy, limit, startAfter, documentId, getDocs, getCountFromServer }
+import { getFirestore, doc, getDoc, collection, query, orderBy, limit, startAfter, documentId, getDocs, getCountFromServer, where }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -132,6 +132,13 @@ onAuthStateChanged(auth, async user => {
     iniciar();
   }catch(e){ sin("No se pudo comprobar tu acceso. Revisa la conexión e inténtalo de nuevo."); }
 });
+let _placas = null;
+async function placas(){
+  if(_placas) return _placas;
+  const s = await getDocs(collection(db, "vehiculos"));
+  _placas = s.docs.map(d => d.id);
+  return _placas;
+}
 function sin(html){ $("sinTxt").innerHTML = html; ver("vSin"); }
 
 function iniciar(){
@@ -167,7 +174,18 @@ $("btnContar").addEventListener("click", async () => {
   const previo = leerPrevio();
   const actual = {};
   for(const c of COLS){
-    try{ actual[c] = (await getCountFromServer(collection(db, c))).data().count; }
+    try{
+      if(c === "mantenimientos"){
+        // Las reglas exigen filtrar por placa: se cuenta placa por placa.
+        let t = 0;
+        for(const pl of await placas()){
+          t += (await getCountFromServer(query(collection(db, c), where("placa", "==", pl)))).data().count;
+        }
+        actual[c] = t;
+      } else {
+        actual[c] = (await getCountFromServer(collection(db, c))).data().count;
+      }
+    }
     catch(e){ actual[c] = null; console.warn("conteo", c, e); }
   }
   dibujar(actual, previo ? previo.datos : null, previo ? previo.fecha : "", false);
@@ -199,6 +217,15 @@ $("btnBajar").addEventListener("click", async () => {
   try{
     for(const c of elegidas){
       const docs = []; let ultimo = null;
+      if(c === "mantenimientos"){
+        for(const pl of await placas()){
+          const s = await getDocs(query(collection(db, c), where("placa", "==", pl)));
+          s.docs.forEach(d => docs.push({ id: d.id, data: plano(d.data()) }));
+        }
+        msg("Descargando " + c + ": " + docs.length + " documentos…");
+        salida.colecciones[c] = docs;
+        continue;
+      }
       for(;;){
         const q = ultimo
           ? query(collection(db, c), orderBy(documentId()), startAfter(ultimo), limit(500))
