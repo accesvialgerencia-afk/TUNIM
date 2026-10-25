@@ -429,14 +429,17 @@ async function cargarLiquidaciones(){
   try{
     const snap = await getDocs(query(collection(db, "liquidaciones"), where("placa", "==", placa)));
     if(placa !== placaActual) return;
-    const lista = snap.docs.map(s => ({ id: s.id, ...s.data() }))
+    const hoyL = hoyColombia();
+    const todas = snap.docs.map(s => ({ id: s.id, ...s.data() }));
+    const lista = todas.filter(l => fechaDeId(l.idTurno || l.id, l.fecha) <= hoyL)
       .sort((a, b) => String(b.idTurno || b.id).localeCompare(String(a.idTurno || a.id)))
       .slice(0, 10);
     if(!lista.length){
       cont.innerHTML = '<div class="empty"><div class="ico">🧾</div>Aún no hay turnos cerrados para esta placa</div>';
       return;
     }
-    cont.innerHTML = lista.map(l => {
+    const nFut = todas.length - todas.filter(l => fechaDeId(l.idTurno || l.id, l.fecha) <= hoyL).length;
+    cont.innerHTML = (nFut ? `<div class="alerta"><strong>${nFut} turno${nFut > 1 ? "s" : ""} con fecha futura</strong>Parece un error de año. No se muestran ni cuentan. Revísalo con el conductor.</div>` : "") + lista.map(l => {
       // La fecha del turno sale del idTurno (TUN-AAAAMMDD-PLACA-CEDULA)
       const m = /^TUN-(\d{4})(\d{2})(\d{2})-/.exec(l.idTurno || l.id || "");
       const fecha = m ? m[1] + "-" + m[2] + "-" + m[3] : (l.fecha || "—");
@@ -522,6 +525,7 @@ function fechaDeId(id, respaldo){
   const m = /^TUN-(\d{4})(\d{2})(\d{2})-/.exec(id || "");
   return m ? m[1] + "-" + m[2] + "-" + m[3] : (respaldo || "");
 }
+function nombreCorto(d, id){ return (d.nombreConductor || "").trim() || ocultaCedula(cedulaDeId(id, d.cedulaConductor)); }
 function cedulaDeId(id, respaldo){
   const p = String(id || "").split("-");
   return p.length === 4 ? p[3] : String(respaldo || "");
@@ -555,11 +559,28 @@ async function cargarMes(){
     // Datos de prueba: lo anterior a vigenteDesde (config_comision) no cuenta.
     const desde = /^\d{4}-\d{2}-\d{2}$/.test(String(cfg.vigenteDesde || "")) ? String(cfg.vigenteDesde) : "";
     const dias = new Map(); // idTurno -> día
+    const futuros = new Map(); // turnos con fecha posterior a hoy (error de año): no cuentan
+    const rarezas = [];        // REVISIÓN DE DATOS (Paso 4): solo se listan, nunca se corrigen solas
     sl.forEach(s => {
       const d = s.data(), id = d.idTurno || s.id;
       const fecha = fechaDeId(id, d.fecha);
+      if(fecha > hoy){ futuros.set(id, { id, fecha, nombre: d.nombreConductor || "", cedula: cedulaDeId(id, d.cedulaConductor) }); return; }
       if(fecha.slice(0, 7) !== mes) return;
       if(desde && fecha < desde) return;
+      { // ── revisión de datos: lista lo raro, no cambia ningún valor ──
+        const q = nombreCorto(d, id), fc = String(d.fechaCierre || "");
+        const bR = Number(d.total) || 0, gR = Number(d.totalGastos) || 0;
+        if(/^\d{4}-\d{2}-\d{2}$/.test(fc) && fc !== fecha){
+          const dd = Math.round((Date.UTC(+fc.slice(0,4), +fc.slice(5,7)-1, +fc.slice(8,10)) - Date.UTC(+fecha.slice(0,4), +fecha.slice(5,7)-1, +fecha.slice(8,10))) / 86400000);
+          if(dd >= 2) rarezas.push({ nivel: "aviso", txt: fecha + " · " + q + ": cerrado " + dd + " días después (el " + fc + ")" });
+          else rarezas.push({ nivel: "info", txt: fecha + " · " + q + ": empezó el " + fecha + " y se cerró el " + fc + " (cuenta en el día en que empezó)" });
+        }
+        if(gR > bR) rarezas.push({ nivel: "aviso", txt: fecha + " · " + q + ": gastos (" + dinero(gR) + ") mayores que el recaudo (" + dinero(bR) + ")" });
+        const pxR = (d.pasajeros != null ? d.pasajeros : d.pax);
+        if(bR > 0 && pxR != null && !(Number(pxR) > 0)) rarezas.push({ nivel: "aviso", txt: fecha + " · " + q + ": hay recaudo pero 0 pasajeros" });
+        if(d.mes && String(d.mes) !== fecha.slice(0, 7)) rarezas.push({ nivel: "aviso", txt: fecha + " · " + q + ": el campo mes dice " + d.mes + " pero el turno es de " + fecha.slice(0, 7) });
+        if(/^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || "")) && d.fecha !== fecha) rarezas.push({ nivel: "aviso", txt: fecha + " · " + q + ": la fecha guardada (" + d.fecha + ") no coincide con la del turno" });
+      }
       const bruto = Number(d.total) || 0, gastos = Number(d.totalGastos) || 0;
       dias.set(id, { id, fecha, cedula: cedulaDeId(id, d.cedulaConductor), nombre: d.nombreConductor || "",
         estado: "cerrado", bruto, gastos, neto: bruto - gastos,
@@ -570,6 +591,7 @@ async function cargarMes(){
       const d = s.data(), id = d.idTurno || s.id;
       if(dias.has(id)) return;                       // ya está cerrado
       const fecha = fechaDeId(id, d.fecha);
+      if(fecha > hoy){ if((Number(d.totalRecaudo) || 0) > 0) futuros.set(id, { id, fecha, nombre: d.nombreConductor || "", cedula: cedulaDeId(id, d.cedulaConductor) }); return; }
       if(fecha.slice(0, 7) !== mes) return;
       if(desde && fecha < desde) return;
       const bruto = Number(d.totalRecaudo) || 0;
@@ -603,12 +625,24 @@ async function cargarMes(){
     const pend = [...dias.values()].filter(d => d.estado === "pendiente").sort((a, b) => a.fecha.localeCompare(b.fecha));
     const curso = [...dias.values()].filter(d => d.estado === "en curso");
 
+    const avisoFut = futuros.size ? `<div class="alerta"><strong>${futuros.size} turno${futuros.size > 1 ? "s" : ""} con fecha futura</strong>
+        Parece un error de año al iniciar el turno. No cuentan como producción. Revísalo con el conductor.` +
+        [...futuros.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(x => `<div class="fila-pend"><span>${esc(x.fecha)} · ${esc(x.nombre || ocultaCedula(x.cedula))}</span></div>`).join("") + `</div>` : "";
     if(!lista.length){
-      cont.innerHTML = '<div class="empty"><div class="ico">📅</div>No hay producción registrada en este mes para esta placa' + (desde ? '<br><span style="font-size:0.7rem">Solo cuenta desde ' + esc(desde) + '.</span>' : '') + '</div>';
+      cont.innerHTML = avisoFut + '<div class="empty"><div class="ico">📅</div>No hay producción registrada en este mes para esta placa' + (desde ? '<br><span style="font-size:0.7rem">Solo cuenta desde ' + esc(desde) + '.</span>' : '') + '</div>';
       return;
     }
 
-    let html = "";
+    let html = avisoFut;
+    if(rarezas.length){
+      const av = rarezas.filter(r => r.nivel === "aviso"), inf = rarezas.filter(r => r.nivel === "info");
+      const fila = r => `<div class="fila-pend"><span>${esc(r.txt)}</span></div>`;
+      html += `<div class="${av.length ? "alerta" : "card"}"><strong>Revisión de datos: ${av.length} aviso${av.length === 1 ? "" : "s"}${inf.length ? " · " + inf.length + " nota" + (inf.length === 1 ? "" : "s") : ""}</strong>
+        <div class="mini" style="margin:2px 0 6px">Solo se listan, no se corrigen solos. Confírmalos con el conductor antes de cerrar el mes.</div>`
+        + av.slice(0, 8).map(fila).join("") + inf.slice(0, 5).map(fila).join("")
+        + ((av.length > 8 || inf.length > 5) ? `<div class="mini">…y ${Math.max(0, av.length - 8) + Math.max(0, inf.length - 5)} más.</div>` : "")
+        + `</div>`;
+    }
     if(desde) html += `<div class="mini" style="margin:0 0 10px">Solo cuenta desde ${esc(desde)}. Lo anterior se considera prueba y se ignora.</div>`;
     if(pend.length){
       html += `<div class="alerta"><strong>${pend.length} día${pend.length > 1 ? "s" : ""} sin cerrar</strong>
@@ -952,6 +986,7 @@ async function cargarEquipo(){
     const placas = Array.isArray(perfil.placas) ? perfil.placas.filter(Boolean) : [];
     if(!placas.length){ cont.innerHTML = '<div class="empty">Tu cuenta no tiene placas asignadas.</div>'; return; }
     const desde = restarDias(hoyColombia(), VENTANA_DIAS);
+    const hoyE = hoyColombia();
 
     const datos = await Promise.all(placas.map(async placa => {
       const [sv, sl, st] = await Promise.all([
@@ -960,9 +995,10 @@ async function cargarEquipo(){
         getDocs(query(collection(db, "turnos_activos"), where("placa", "==", placa)))
       ]);
       const veh = sv.exists() ? sv.data() : null;
-      const vistos = new Set(), porCed = new Map();
+      const vistos = new Set(), porCed = new Map(), futuras = new Set();
       const sumar = (id, fechaResp, nombre, ced, produjo) => {
         const fecha = fechaDeId(id, fechaResp);
+        if(fecha > hoyE){ if(produjo) futuras.add(id); return; }
         if(!fecha || fecha < desde || vistos.has(id) || !produjo) return;
         vistos.add(id);
         const c = cedulaDeId(id, ced);
@@ -973,7 +1009,7 @@ async function cargarEquipo(){
       };
       sl.forEach(s => { const d = s.data(); sumar(d.idTurno || s.id, d.fecha, d.nombreConductor, d.cedulaConductor, true); });
       st.forEach(s => { const d = s.data(); sumar(d.idTurno || s.id, d.fecha, d.nombreConductor, d.cedulaConductor, (Number(d.totalRecaudo) || 0) > 0); });
-      return { placa, veh, conductores: [...porCed.values()].sort((a, b) => b.dias - a.dias) };
+      return { placa, veh, futuras: futuras.size, conductores: [...porCed.values()].sort((a, b) => b.dias - a.dias) };
     }));
 
     // empresa de cada placa (si falta empresaId se asume autoboy y se avisa)
@@ -997,6 +1033,7 @@ async function cargarEquipo(){
       const avisos = [];
       if(!d.veh) avisos.push("No existe el documento de este vehículo en Firestore.");
       else if(!d.veh.empresaId) avisos.push("El vehículo no tiene empresa guardada; se asume Autoboy.");
+      if(d.futuras) avisos.push(d.futuras + " turno" + (d.futuras > 1 ? "s" : "") + " con fecha futura ignorado" + (d.futuras > 1 ? "s" : "") + " (posible error de año).");
       if(!d.conductores.length) avisos.push("Sin conductores con producción en los últimos " + VENTANA_DIAS + " días.");
       return `<div class="org-nodo"><div class="org-nivel">Vehículo</div><div class="org-nom org-placa">${esc(d.placa)}</div>
         ${avisos.map(a => `<div class="org-aviso">⚠ ${esc(a)}</div>`).join("")}
