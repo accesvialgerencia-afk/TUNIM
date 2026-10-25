@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es" translate="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="google" content="notranslate">
+<title>TUNIM · Respaldo y conteo</title>
+<style>
+:root{--bg:#06090D;--surface:#0D1117;--surface2:#131920;--border2:#243040;--text:#E8EDF2;--muted:#5A6A7A;--muted2:#7A8A9A;--amarillo:#F5C800;--verde:#00C47A;--rojo:#E8354F}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh}
+.wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:1.5rem;letter-spacing:3px;color:var(--amarillo)}
+.sub{font-size:.7rem;color:var(--muted);letter-spacing:1px;margin:2px 0 14px}
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:.78rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);margin-bottom:8px}
+p,li{font-size:.8rem;line-height:1.45;color:var(--muted2)}
+button{font:600 .8rem system-ui;padding:11px 14px;border-radius:10px;border:1px solid var(--amarillo);background:var(--amarillo);color:#000;cursor:pointer}
+button.sec{background:transparent;color:var(--amarillo)}
+button:disabled{opacity:.4;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+td,th{padding:7px 4px;border-bottom:1px solid var(--border2);text-align:right}
+td:first-child,th:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:.68rem;letter-spacing:1px;text-transform:uppercase}
+.ok{color:var(--verde)}.mal{color:var(--rojo)}
+.hidden{display:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+pre{background:var(--surface2);border-radius:8px;padding:10px;font-size:.72rem;white-space:pre-wrap;color:var(--text);margin-top:8px}
+label{font-size:.76rem;color:var(--text);display:flex;gap:6px;align-items:center;margin:3px 0}
+#msg{font-size:.76rem;margin-top:8px;min-height:1em;color:var(--amarillo)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TUNIM</h1>
+  <div class="sub">PASO 0 · RESPALDO Y CONTEO — SOLO LECTURA</div>
+
+  <div id="vCargando" class="card"><p>Cargando…</p></div>
+
+  <div id="vLogin" class="card hidden">
+    <h2>Entrar</h2>
+    <p>Esta página solo <b>lee</b>: no crea, cambia ni borra nada. Entra con la cuenta de Google de administrador de TUNIM.</p>
+    <div class="row"><button id="btnGoogle">Entrar con Google</button></div>
+    <div id="loginError" class="mal" style="font-size:.76rem;margin-top:8px"></div>
+  </div>
+
+  <div id="vSin" class="card hidden"><h2>Sin acceso</h2><p id="sinTxt"></p><div class="row"><button class="sec" id="btnOtra">Entrar con otra cuenta</button></div></div>
+
+  <div id="vApp" class="hidden">
+    <div class="card">
+      <h2>1 · Contar documentos</h2>
+      <p>Cuenta cuántos documentos hay en cada colección (consume muy pocas lecturas). Guarda el resultado en este navegador y lo compara con el conteo anterior: úsalo <b>antes y después</b> de cada instalación.</p>
+      <div class="row"><button id="btnContar">Contar ahora</button></div>
+      <table id="tabla" class="hidden" style="margin-top:10px">
+        <thead><tr><th>Colección</th><th>Ahora</th><th>Antes</th><th>Cambio</th></tr></thead>
+        <tbody id="cuerpo"></tbody>
+      </table>
+      <div id="resumen"></div>
+    </div>
+
+    <div class="card">
+      <h2>2 · Descargar respaldo (JSON)</h2>
+      <p>Descarga un archivo con los documentos de las colecciones que marques. <b>Cada documento descargado cuenta como una lectura</b> del plan gratuito (límite diario 50.000); si tienes muchos pasajeros, descarga primero las colecciones pequeñas y deja <i>pasajeros</i> para otro día si hace falta.</p>
+      <div id="checks" style="margin-top:8px"></div>
+      <div class="row"><button id="btnBajar" class="sec">Descargar respaldo</button></div>
+    </div>
+
+    <div id="msg"></div>
+    <div class="row"><button class="sec" id="btnSalir">Salir</button></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, collection, query, orderBy, limit, startAfter, documentId, getDocs, getCountFromServer }
+  from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB79LJkoSH9pGy7H7U3jAyRt0ge_Hm0Jvc",
+  authDomain: "tunim-9064e.firebaseapp.com",
+  projectId: "tunim-9064e",
+  storageBucket: "tunim-9064e.firebasestorage.app",
+  messagingSenderId: "948598556990",
+  appId: "1:948598556990:web:00390ceefa5e5962f5846f"
+};
+// App con nombre propio: no toca la sesión anónima del conductor en este navegador.
+const app  = initializeApp(firebaseConfig, "respaldo");
+const auth = getAuth(app);
+const db   = getFirestore(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// Colecciones del respaldo (se omite conductores: contiene cédulas con hash).
+const COLS = ["turnos","turnos_activos","liquidaciones","pasajeros","mantenimientos","vehiculos","config_comision"];
+const GRANDES = ["pasajeros"];
+const KEY = "tunim_respaldo_conteo_v1";
+
+function ver(id){ ["vCargando","vLogin","vSin","vApp"].forEach(p => $(p).classList.toggle("hidden", p !== id)); }
+function msg(t){ $("msg").textContent = t || ""; }
+
+const proveedor = new GoogleAuthProvider();
+proveedor.setCustomParameters({ prompt: "select_account" });
+$("btnGoogle").addEventListener("click", async () => {
+  $("loginError").textContent = "";
+  try{ await signInWithPopup(auth, proveedor); }
+  catch(e){
+    if(e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment"){
+      try{ await signInWithRedirect(auth, proveedor); return; }catch(e2){ e = e2; }
+    }
+    if(e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") return;
+    $("loginError").textContent = "No se pudo entrar con Google (" + (e.code || "error") + ").";
+  }
+});
+getRedirectResult(auth).catch(() => {});
+async function salir(){ try{ await signOut(auth); }catch(e){} }
+$("btnSalir").addEventListener("click", salir);
+$("btnOtra").addEventListener("click", salir);
+
+onAuthStateChanged(auth, async user => {
+  if(!user){ ver("vLogin"); return; }
+  ver("vCargando");
+  const correo = (user.email || "").toLowerCase();
+  if(!correo || !user.emailVerified){ sin("Google no pudo verificar el correo de esta cuenta."); return; }
+  try{
+    const snap = await getDoc(doc(db, "usuarios", correo));
+    if(!snap.exists() || snap.data().activo === false || snap.data().rol !== "admin"){
+      sin("La cuenta <b>" + esc(correo) + "</b> no es de administrador. El respaldo solo lo hace el administrador de TUNIM.");
+      return;
+    }
+    iniciar();
+  }catch(e){ sin("No se pudo comprobar tu acceso. Revisa la conexión e inténtalo de nuevo."); }
+});
+function sin(html){ $("sinTxt").innerHTML = html; ver("vSin"); }
+
+function iniciar(){
+  $("checks").innerHTML = COLS.map(c =>
+    `<label><input type="checkbox" value="${c}" ${GRANDES.includes(c) ? "" : "checked"}> ${c}${GRANDES.includes(c) ? " (grande)" : ""}</label>`).join("");
+  ver("vApp");
+  const previo = leerPrevio();
+  if(previo) dibujar(previo.datos, previo.datos, previo.fecha, true);
+}
+
+function leerPrevio(){ try{ return JSON.parse(localStorage.getItem(KEY) || "null"); }catch(e){ return null; } }
+function ahoraCo(){ return new Date(Date.now() - 5*3600*1000).toISOString().replace("T"," ").slice(0,16); }
+
+function dibujar(actual, previo, fechaPrevio, soloGuardado){
+  $("tabla").classList.remove("hidden");
+  $("cuerpo").innerHTML = COLS.map(c => {
+    const a = actual[c], p = previo ? previo[c] : null;
+    let cambio = "—", cls = "";
+    if(!soloGuardado && p != null && a != null){
+      const d = a - p;
+      cambio = d === 0 ? "igual" : (d > 0 ? "+" + d : String(d));
+      cls = d < 0 ? "mal" : "ok";
+    }
+    return `<tr><td>${c}</td><td>${a ?? "error"}</td><td>${p ?? "—"}</td><td class="${cls}">${cambio}</td></tr>`;
+  }).join("");
+  $("resumen").innerHTML = soloGuardado
+    ? `<p style="margin-top:8px">Último conteo guardado: <b>${esc(fechaPrevio)}</b> (hora Colombia). Pulsa «Contar ahora» para comparar.</p>`
+    : "";
+}
+
+$("btnContar").addEventListener("click", async () => {
+  $("btnContar").disabled = true; msg("Contando…");
+  const previo = leerPrevio();
+  const actual = {};
+  for(const c of COLS){
+    try{ actual[c] = (await getCountFromServer(collection(db, c))).data().count; }
+    catch(e){ actual[c] = null; console.warn("conteo", c, e); }
+  }
+  dibujar(actual, previo ? previo.datos : null, previo ? previo.fecha : "", false);
+  const bajaron = COLS.filter(c => previo && previo.datos[c] != null && actual[c] != null && actual[c] < previo.datos[c]);
+  const fecha = ahoraCo();
+  const txt = "TUNIM conteo " + fecha + "\n" + COLS.map(c => c + ": " + (actual[c] ?? "error")).join("\n");
+  $("resumen").innerHTML =
+    (bajaron.length ? `<p class="mal" style="margin-top:8px"><b>Atención:</b> bajó el número de documentos en ${bajaron.join(", ")}. Se espera que nunca baje.</p>`
+                    : (previo ? `<p class="ok" style="margin-top:8px">Ningún conteo bajó respecto al anterior (${esc(previo.fecha)}).</p>` : `<p style="margin-top:8px">Primer conteo guardado. Es tu línea base.</p>`))
+    + `<pre>${esc(txt)}</pre>`;
+  try{ localStorage.setItem(KEY, JSON.stringify({ fecha, datos: actual })); }catch(e){}
+  msg(""); $("btnContar").disabled = false;
+});
+
+function plano(v){
+  if(v == null) return v;
+  if(typeof v.toDate === "function"){ try{ return { __ts: v.toDate().toISOString() }; }catch(e){ return null; } }
+  if(Array.isArray(v)) return v.map(plano);
+  if(typeof v === "object"){ const o = {}; for(const k of Object.keys(v)) o[k] = plano(v[k]); return o; }
+  return v;
+}
+
+$("btnBajar").addEventListener("click", async () => {
+  const elegidas = [...document.querySelectorAll("#checks input:checked")].map(i => i.value);
+  if(!elegidas.length){ msg("Marca al menos una colección."); return; }
+  if(elegidas.some(c => GRANDES.includes(c)) && !confirm("«pasajeros» puede tener muchos documentos y cada uno cuenta como una lectura del plan gratuito. ¿Continuar?")) return;
+  $("btnBajar").disabled = true;
+  const salida = { generado: ahoraCo() + " (hora Colombia)", proyecto: "tunim-9064e", colecciones: {} };
+  try{
+    for(const c of elegidas){
+      const docs = []; let ultimo = null;
+      for(;;){
+        const q = ultimo
+          ? query(collection(db, c), orderBy(documentId()), startAfter(ultimo), limit(500))
+          : query(collection(db, c), orderBy(documentId()), limit(500));
+        const s = await getDocs(q);
+        s.docs.forEach(d => docs.push({ id: d.id, data: plano(d.data()) }));
+        msg("Descargando " + c + ": " + docs.length + " documentos…");
+        if(s.docs.length < 500) break;
+        ultimo = s.docs[s.docs.length - 1];
+      }
+      salida.colecciones[c] = docs;
+    }
+    const blob = new Blob([JSON.stringify(salida)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "tunim-respaldo-" + ahoraCo().slice(0,10) + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    msg("Listo: " + elegidas.map(c => c + " " + salida.colecciones[c].length).join(" · "));
+  }catch(e){
+    msg("No se pudo completar la descarga (" + (e.code || e.message || "error") + "). Nada se modificó.");
+  }
+  $("btnBajar").disabled = false;
+});
+</script>
+</body>
+</html>
