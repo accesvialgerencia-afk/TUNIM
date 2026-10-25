@@ -86,12 +86,12 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 
-const ETQ = {nombre:"Nombre",diasTrabajoMes:"Días de trabajo del mes (base de la meta diaria)",tramo1Hasta:"Tramo 1 hasta (neto)",tramo1Pct:"Tramo 1 %",tramo2Hasta:"Tramo 2 hasta (neto)",tramo2Pct:"Tramo 2 %",tramo3Hasta:"Tramo 3 hasta (neto)",tramo3Pct:"Tramo 3 %",tramo4Pct:"Tramo 4 % (sobre el resto)",metaNetoMinimo:"Meta neta mínima del mes",metaNetoAlto:"Meta neta alta del mes",vigenteDesde:"Vigente desde",miAvanceActivo:"«Mi avance del mes» activo"};
+const ETQ = {nombre:"Nombre",diasTrabajoMes:"Días de trabajo del mes (base de la meta diaria)",tramo1Hasta:"Tramo 1 hasta (neto)",tramo1Pct:"Tramo 1 %",tramo2Hasta:"Tramo 2 hasta (neto)",tramo2Pct:"Tramo 2 %",tramo3Hasta:"Tramo 3 hasta (neto)",tramo3Pct:"Tramo 3 %",tramo4Pct:"Tramo 4 % (sobre el resto)",metaNetoMinimo:"Meta neta mínima del mes",metaNetoAlto:"Meta neta alta del mes",vigenteDesde:"Vigente desde",miAvanceActivo:"«Mi avance del mes» activo",comisionLaPaga:"Quién paga la comisión",salarioLoPaga:"Quién paga el salario básico",salarioBasico:"Salario básico mensual",pagoFijoConductor:"Pago fijo al conductor",minimoConductor:"Mínimo mensual del conductor",descuentoMaxRanking:"Descuento máximo del ranking (%)",diasReserva:"Días de reserva",cuponMensual:"Cupón mensual",mantenimientoMensual:"Mantenimiento mensual",minimoPropietario:"Mínimo mensual del propietario",otrosCostosFijosMes:"Otros costos fijos del mes"};
 const dinero = n => "$" + Math.round(Number(n)||0).toLocaleString("es-CO");
 let CFG = {}, PRIV = null, EMP = "";
 function valor(k,v){
   if(typeof v === "boolean") return v ? "Sí" : "No";
-  if(typeof v === "number" && /Hasta|meta|Meta/.test(k)) return dinero(v);
+  if(typeof v === "number" && /Hasta|meta|Meta|salarioBasico|pagoFijo|minimo|cupon|mantenimiento|otrosCostos/.test(k)) return dinero(v);
   if(typeof v === "object" && v !== null) return esc(JSON.stringify(v));
   return esc(v);
 }
