@@ -1791,6 +1791,7 @@ function alEntrarGeocercaOperativa(geo){
     // el bloque de DESTINO — corregido ahí, no aquí.
     if(!sentidoInicioTurno && geo.sentido){
       sentidoInicioTurno = geo.sentido;
+      persistirDireccion();
     }
 
     // ── CORRECCIÓN: sincronizar dirección con el sentido de la geocerca ──
@@ -1805,12 +1806,8 @@ function alEntrarGeocercaOperativa(geo){
       // turno de salida), tiempo en que detectarDireccionPorTrazado()
       // podría "confundirse" con el ruido de GPS estacionario y
       // sobrescribir esta dirección confirmada.
-      momentoUltimaGeocercaOperativa = Date.now();
-      if(geo.sentido !== direccionRuta){
-        direccionRuta = geo.sentido;
-        diagCambio("geocerca_origen",geo.id);
-        historialLatitudes = [];
-        cambiosDireccionPendientes = 0;
+      if(!proteccionManualActiva()) momentoUltimaGeocercaOperativa = Date.now();
+      if(resolverDireccion("geocerca_origen", geo.sentido, geo.id)){
         console.log("🧭 Dirección sincronizada por geocerca operativa:", geo.sentido);
       }
     }
@@ -1868,12 +1865,8 @@ function alEntrarGeocercaOperativa(geo){
     // haciendo que direccionParaVoz() devolviera "ida" siempre,
     // justo lo opuesto a lo que se buscaba corregir.
     if(geo.sentido){
-      momentoUltimaGeocercaOperativa = Date.now();
-      if(geo.sentido !== direccionRuta){
-        direccionRuta = geo.sentido;
-        diagCambio("geocerca_destino",geo.id);
-        historialLatitudes = [];
-        cambiosDireccionPendientes = 0;
+      if(!proteccionManualActiva()) momentoUltimaGeocercaOperativa = Date.now();
+      if(resolverDireccion("geocerca_destino", geo.sentido, geo.id)){
         console.log("🧭 Dirección sincronizada por geocerca DESTINO:", geo.sentido);
       }
     }
@@ -2453,6 +2446,24 @@ async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
     if(snap.exists()){
       const data=snap.data();
       if(data.conteos&&data.conteos.length===RUTAS.length){
+        // ── CORRECCIÓN (27 oct 2026) — la restauración nunca baja pasajeros ──
+        // Antes: se reemplazaban SIEMPRE los conteos y el historial del
+        // aparato por los de la nube. Si la nube iba un pasajero atrás
+        // (sincronización en camino o sin señal), ese pasajero desaparecía
+        // del contador y del historial (8 → 7 pax en la tarifa de $7.000).
+        // Ahora: si el aparato tiene más pasajeros que la nube, se conserva
+        // lo del aparato y se sube a la nube. Solo gana la nube cuando
+        // tiene más (por ejemplo, otro aparato registró en el mismo turno).
+        try{
+          const _totLocal=(estado.conteos||[]).reduce((a,b)=>a+b,0);
+          const _totNube=data.conteos.reduce((a,b)=>a+b,0);
+          if(_totLocal>_totNube){
+            diagCambio("restaurar_conserva_local","local "+_totLocal+" > nube "+_totNube);
+            mostrarToast("☁ Se conservan tus "+_totLocal+" pax (la nube tenía "+_totNube+")","");
+            try{ persistirEstadoTurno(); }catch(e){}
+            return;
+          }
+        }catch(e){ console.warn("Comparación local/nube:",e); }
         estado.conteos=data.conteos;
         // ── CORRECCIÓN (21 sep 2026): reconstruir arreglo anidado en
         // memoria a partir de los 3 campos separados que sí acepta
@@ -2485,9 +2496,10 @@ async function cargarTurnoDesdeFirebase(placa, fecha, cedula){
             // duplicar lógica nueva.
             if(geoOrigen.sentido){
               if(!sentidoInicioTurno) sentidoInicioTurno = geoOrigen.sentido;
-              direccionRuta = geoOrigen.sentido;
-              diagCambio("restaurar_turno",geoOrigen.id);
-              momentoUltimaGeocercaOperativa = Date.now();
+              // Si hay dirección guardada en disco de hoy, ésa manda (resolverDireccion la respeta)
+              resolverDireccion("restaurar_turno", geoOrigen.sentido, geoOrigen.id);
+              persistirDireccion();
+              if(!direccionRestauradaDeDisco) momentoUltimaGeocercaOperativa = Date.now();
             }
           }
         }
@@ -3224,6 +3236,73 @@ function direccionParaVoz(){
   // Si es el sentido contrario, es su "vuelta".
   return (direccionRuta === sentidoInicioTurno) ? "ida" : "vuelta";
 }
+
+// ══ DIRECCIÓN — AUTORIDAD CENTRAL (2 nov 2026) ══
+// Antes: 8 funciones escribían direccionRuta sin una regla común, y el
+// botón solo se refrescaba al pulsarlo a mano. Ahora TODO cambio de
+// sentido pasa por resolverDireccion(), que decide, deja rastro en el
+// diagnóstico, guarda en disco y refresca el botón.
+// Regla: la decisión MANUAL protege 5 min contra TODA fuente automática.
+const DIR_KEY = "tunim_direccion_v1";
+const MIN_PROTECCION_MANUAL = 5;
+let ultimoCambioManualMs = null;
+let direccionRestauradaDeDisco = false;
+
+function dirTextoGeografico(d){ return d === "ida" ? "Soacha→Funza" : "Funza→Soacha"; }
+
+function proteccionManualActiva(){
+  return !!ultimoCambioManualMs && ((Date.now() - ultimoCambioManualMs) / 60000) < MIN_PROTECCION_MANUAL;
+}
+
+function actualizarBotonDireccion(){
+  try{
+    const btn = document.getElementById("btnDireccion");
+    if(!btn) return;
+    btn.textContent = "🚌 " + (direccionParaVoz() === "ida" ? "IDA" : "VUELTA") + " · " + dirTextoGeografico(direccionRuta);
+  }catch(e){}
+}
+
+function persistirDireccion(){
+  try{
+    localStorage.setItem(DIR_KEY, JSON.stringify({
+      dia: diaKey(), dir: direccionRuta, inicio: sentidoInicioTurno, manualMs: ultimoCambioManualMs
+    }));
+  }catch(e){}
+  actualizarBotonDireccion();
+}
+
+// Devuelve true si el sentido cambió. Las fuentes automáticas pueden ser
+// bloqueadas por la protección manual; el bloqueo queda en el diagnóstico.
+function resolverDireccion(fuente, sentido, detalle){
+  if(sentido !== "ida" && sentido !== "vuelta") return false;
+  if(fuente !== "boton_manual"){
+    if(fuente === "restaurar_turno" && direccionRestauradaDeDisco) return false;
+    if(sentido !== direccionRuta && proteccionManualActiva()){
+      diagCambio("bloqueado_por_manual", fuente + " quería " + sentido + (detalle ? " · " + detalle : ""));
+      return false;
+    }
+  }
+  if(sentido === direccionRuta) return false;
+  direccionRuta = sentido;
+  if(fuente === "boton_manual") ultimoCambioManualMs = Date.now();
+  historialLatitudes = [];
+  cambiosDireccionPendientes = 0;
+  diagCambio(fuente, detalle || "");
+  persistirDireccion();
+  actualizarBotonDireccion();
+  return true;
+}
+
+(function restaurarDireccionGuardada(){
+  try{
+    const r = JSON.parse(localStorage.getItem(DIR_KEY) || "null");
+    if(!r || r.dia !== diaKey()) return;
+    if(r.dir === "ida" || r.dir === "vuelta"){ direccionRuta = r.dir; direccionRestauradaDeDisco = true; }
+    if(!sentidoInicioTurno && (r.inicio === "ida" || r.inicio === "vuelta")) sentidoInicioTurno = r.inicio;
+    if(typeof r.manualMs === "number") ultimoCambioManualMs = r.manualMs;
+  }catch(e){}
+})();
+window.addEventListener("load", () => setTimeout(actualizarBotonDireccion, 300));
 let historialLatitudes = [];
 const MAX_HIST_LAT = 10;
 
@@ -3271,13 +3350,12 @@ function detectarDireccion(lat){
       cambiosDireccionPendientes++;
       // Requiere varias lecturas consecutivas en el mismo sentido antes de cambiar
       if(cambiosDireccionPendientes >= CONFIRMACIONES_REQUERIDAS){
-        direccionRuta = propuesta;
-        diagCambio("latitud","diff "+diff.toFixed(5));
         cambiosDireccionPendientes = 0;
-        historialLatitudes = []; // reiniciar para la próxima detección
-        const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
-        mostrarToast(msg, "");
-        console.log("Dirección CONFIRMADA:", direccionRuta, "diff:", diff.toFixed(6));
+        if(resolverDireccion("latitud", propuesta, "diff "+diff.toFixed(5))){
+          const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
+          mostrarToast(msg, "");
+          console.log("Dirección CONFIRMADA:", direccionRuta, "diff:", diff.toFixed(6));
+        }
       }
     } else {
       cambiosDireccionPendientes = 0; // se mantiene el sentido actual, resetear contador
@@ -3316,12 +3394,8 @@ function detectarDireccionPorTrazado(lat, lng){
   const ROMBO_LA_MESA = { lat: 4.7024406, lng: -74.2347891 };
   const distRomboLaMesa = distanciaMetros(lat, lng, ROMBO_LA_MESA.lat, ROMBO_LA_MESA.lng);
   if(distRomboLaMesa <= RADIO_TRAZADO){
-    momentoUltimaGeocercaOperativa = Date.now();
-    if(direccionRuta !== "vuelta"){
-      direccionRuta = "vuelta";
-      diagCambio("rombo_la_mesa","");
-      historialLatitudes = [];
-      cambiosDireccionPendientes = 0;
+    if(!proteccionManualActiva()) momentoUltimaGeocercaOperativa = Date.now();
+    if(resolverDireccion("rombo_la_mesa","vuelta","")){
       console.log("🧭 Dirección CONFIRMADA por punto de alta confianza: Rombo La Mesa → vuelta");
       auditLog("DIRECCION_ROMBO_LA_MESA","Confirmado sentido vuelta con certeza de negocio","info");
     }
@@ -3419,10 +3493,7 @@ function detectarDireccionPorTrazado(lat, lng){
     if(idxDetectado <= 1){
       sentidoTrazadoActual = sentidoDetectado;
       indiceTrazadoActual = idxDetectado;
-      if(sentidoDetectado !== direccionRuta){
-        direccionRuta = sentidoDetectado;
-        diagCambio("trazado",trazado[idxDetectado].nombre+" idx"+idxDetectado);
-        historialLatitudes = []; // limpiar detector viejo, ya no es la fuente principal
+      if(resolverDireccion("trazado", sentidoDetectado, trazado[idxDetectado].nombre+" idx"+idxDetectado)){
         const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
         mostrarToast(msg, "");
         auditLog("DIRECCION_POR_TRAZADO","Sentido:"+direccionRuta+" punto:"+trazado[idxDetectado].nombre,"info");
@@ -3442,12 +3513,13 @@ function ciclarModoAudio(){
 }
 
 function cambiarDireccionManual(){
-  direccionRuta = direccionRuta === "ida" ? "vuelta" : "ida";
-  diagCambio("boton_manual","");
+  resolverDireccion("boton_manual", direccionRuta === "ida" ? "vuelta" : "ida", "");
   historialLatitudes = [];
   // ── CORRECCIÓN CRÍTICA: reset de pasajeros a bordo al cambiar dirección ──
   pasajerosABordo = [];
-  if(typeof geocercasOperativasActivas!=="undefined") geocercasOperativasActivas.clear();
+  // (2 nov 2026) YA NO se limpian geocercasOperativasActivas: las zonas donde
+  // el bus está parado deben seguir "ocupadas" para que no se re-disparen
+  // y deshagan la decisión del conductor.
   if(typeof origenOperativo!=="undefined") origenOperativo = null;
   if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
   // Sincronizar el trazado con la decisión manual del conductor —
@@ -3475,9 +3547,8 @@ function cambiarDireccionManual(){
   // relativa al origen del turno — el toast de arriba sigue mostrando
   // la dirección geográfica real, útil como referencia clara. ──
   const dirVoz = direccionParaVoz();
-  hablar(dirVoz === "ida" ? "Modo ida" : "Modo vuelta", 1.0, 1.1);
-  const btn = document.getElementById("btnDireccion");
-  if(btn) btn.textContent = dirVoz === "ida" ? "🚌 IDA" : "🚌 VUELTA";
+  hablar((dirVoz === "ida" ? "Modo ida" : "Modo vuelta") + ". " + (direccionRuta === "ida" ? "De Soacha a Funza" : "De Funza a Soacha"), 1.0, 1.1);
+  actualizarBotonDireccion();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4109,6 +4180,7 @@ async function confirmarDeshacer(){
   estado.conteosViaje[last.viaje-1][last.idx]=Math.max(0,estado.conteosViaje[last.viaje-1][last.idx]-1);
   estado.historial.shift();
   guardarEstado();
+  try{ persistirEstadoTurno(); }catch(e){}   // 27 oct 2026: la nube refleja el deshacer y no lo "resucita" al restaurar
   cerrarModalDeshacer();
   actualizarUI();
   mostrarToast("↩ Registro eliminado — motivo guardado","warn");
@@ -4307,6 +4379,8 @@ function ejecutarNuevoTurno(){
       try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(configTurno)); }catch(e){}
     }
     // Reset completo del sistema operativo
+    try{ localStorage.removeItem(DIR_KEY); }catch(e){}
+    ultimoCambioManualMs = null; direccionRestauradaDeDisco = false;
     origenOperativo = null;
     destinoOperativo = null;
     horaOrigenGPS = null;
