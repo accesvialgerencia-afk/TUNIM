@@ -887,6 +887,40 @@ function generarPIN(){
   return String(Math.floor(1000 + Math.random()*9000));
 }
 
+// ── PROTECCIÓN CONTRA DUPLICACIÓN DE EMPRESAS (20 sep 2026) ──
+// Antes de generar un empresaId nuevo, busca si ya existe una
+// empresa con un ID muy similar (ej. "autoboy" vs "autoboy-s-a")
+// y pide confirmación explícita en lugar de duplicar en silencio.
+// Retorna el empresaId a usar, o null si el usuario cancela.
+async function resolverEmpresaIdSinDuplicar(empresaIdPropuesto, nombreOriginal){
+  const {db, collection, getDocs} = window._fb;
+  const snap = await getDocs(collection(db,"empresas"));
+  const idsExistentes = snap.docs.map(d=>d.id);
+
+  // Coincidencia exacta — no hay ambigüedad, se usa directamente
+  if(idsExistentes.includes(empresaIdPropuesto)) return empresaIdPropuesto;
+
+  // Buscar coincidencia PARCIAL — uno de los IDs "empieza igual"
+  // que el otro (cubre casos como "autoboy" vs "autoboy-s-a")
+  const candidato = idsExistentes.find(id =>
+    id.startsWith(empresaIdPropuesto) || empresaIdPropuesto.startsWith(id)
+  );
+
+  if(candidato && candidato !== empresaIdPropuesto){
+    const usar = confirm(
+      `El nombre "${nombreOriginal}" generaría el ID "${empresaIdPropuesto}",\n`+
+      `pero ya existe una empresa registrada como "${candidato}".\n\n`+
+      `¿Es la MISMA empresa? Presiona ACEPTAR para usar "${candidato}"\n`+
+      `(recomendado), o CANCELAR para crear "${empresaIdPropuesto}" como\n`+
+      `una empresa NUEVA y separada.`
+    );
+    return usar ? candidato : empresaIdPropuesto;
+  }
+
+  // Sin coincidencias — es una empresa nueva, sin riesgo de duplicar
+  return empresaIdPropuesto;
+}
+
 async function aprobarVehiculo(id, placa, correo, nombres){
   // Recuperar la solicitud completa del caché — incluye datos del conductor si vinieron
   const solicitud = (window._solicitudesPendientesCache||{})[id] || {};
@@ -916,6 +950,19 @@ async function aprobarVehiculo(id, placa, correo, nombres){
     : "autoboy";
   const corridorIdReal = solicitud.corridorId || "funza-mosquera-bogota-soacha";
 
+  // ── PROTECCIÓN CONTRA DUPLICACIÓN DE EMPRESA (20 sep 2026) ──
+  // Riesgo real identificado: "Autoboy" y "Autoboy S.A." generan
+  // IDs distintos ("autoboy" vs "autoboy-s-a"), creando dos
+  // identidades separadas para lo que en realidad es la misma
+  // empresa — esto NO compromete datos personales (Ley 1581 sigue
+  // intacta), pero SÍ separaría incorrectamente tarifas y reportes
+  // de una misma empresa. Antes de crear un empresaId nuevo, se
+  // busca si ya existe alguno con coincidencia parcial del nombre,
+  // y si la hay, se pide confirmación explícita en vez de duplicar
+  // silenciosamente.
+  const empresaIdFinal = await resolverEmpresaIdSinDuplicar(empresaIdReal, solicitud.empresa||"");
+  if(empresaIdFinal === null) return; // el usuario canceló la aprobación
+
   // Generar PIN único para el propietario
   const pin = generarPIN();
 
@@ -932,7 +979,7 @@ async function aprobarVehiculo(id, placa, correo, nombres){
   await setDoc(doc(db,"vehiculos",placa),{
     placa,
     orden:            solicitud.orden||"",
-    empresaId:        empresaIdReal,
+    empresaId:        empresaIdFinal,
     corridorId:       corridorIdReal,
     estado:           "activo",
     planTunim:        "prueba",
@@ -957,7 +1004,7 @@ async function aprobarVehiculo(id, placa, correo, nombres){
         cedulaHash,
         cedulaMask,
         nombres:       solicitud.conductorNombres.trim(),
-        empresaId:     empresaIdReal,
+        empresaId:     empresaIdFinal,
         tipo:          "titular", // ACCESVIAL puede reclasificarlo luego si es relevador
         placaTitular:  placa,
         placasAutorizadas: [placa],
@@ -1366,7 +1413,16 @@ async function editarConductor(id){
   document.getElementById("con-placas").value = (c.placasAutorizadas||[]).join(", ");
 
   // La cédula se muestra pero NO editable — es la identidad del registro
+  // ── CORRECCIÓN (20 sep 2026): el campo es type="number" (para
+  // validar solo dígitos al CREAR), pero el valor enmascarado por
+  // Ley 1581 contiene asteriscos ("792***63") — un campo numérico
+  // rechaza silenciosamente cualquier caracter no numérico, dejando
+  // el campo vacío sin ningún error visible al usuario. Se cambia
+  // a type="text" solo mientras se muestra el valor enmascarado
+  // (el campo ya queda disabled, así que no se pierde ninguna
+  // validación real de cédula al crear un conductor nuevo). ──
   const campoCedula = document.getElementById("con-cedula");
+  campoCedula.type = "text";
   campoCedula.value = c.cedulaMask||"(no editable)";
   campoCedula.disabled = true;
 
@@ -1403,6 +1459,7 @@ async function crearConductor(){
     toast("✅ Conductor actualizado");
     conductorEditandoId = null;
     document.getElementById("con-cedula").disabled = false;
+    document.getElementById("con-cedula").type = "number"; // restaurar validación normal
     document.getElementById("btn-guardar-conductor").textContent = "✓ REGISTRAR CONDUCTOR";
     toggleForm("form-conductor");
     ["con-nombres","con-cedula","con-placa-titular","con-placas"].forEach(id=>{
