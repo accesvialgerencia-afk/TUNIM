@@ -2029,7 +2029,14 @@ function alEntrarGeocerca(geo, dist){
   // relativo al origen real del turno de ESTE conductor, no siempre
   // "vuelta=hacia Soacha" fijo (confirmado: para quien inicia en
   // Funza, su "ida" es justamente hacia Soacha). ──
-  const claveVoz = geo.codigo + "_" + direccionParaVoz();
+  // ── CORRECCIÓN (3 nov 2026) ──
+  // Los TEXTOS de VOZ_GEO son GEOGRÁFICOS ("Llegamos a Soacha", "Funza y
+  // Mosquera. Destino final"), pero se elegían con el sentido RELATIVO al
+  // inicio del turno. Para un turno iniciado en Funza (Villa Paul/INPEC)
+  // quedaban invertidos. Ahora la frase se elige por el sentido geográfico
+  // real (direccionRuta). El sentido relativo sigue solo en el botón y en
+  // "Modo ida/vuelta". Tarifas y conteos no se tocan.
+  const claveVoz = geo.codigo + "_" + direccionRuta;
   const vozMsg = VOZ_GEO[claveVoz];
 
   // ── CORRECCIÓN (7 sep 2026) — beep eliminado ──
@@ -2051,7 +2058,7 @@ function alEntrarGeocerca(geo, dist){
   // límite de 5 segundos que activa "ducking" en vez de pausar
   // música. Suena 2.5s después del mensaje de tarifa, dando tiempo
   // a que termine antes de empezar el siguiente.
-  if(geo.codigo === "G3" && direccionParaVoz() === "ida"){
+  if(geo.codigo === "G3" && direccionRuta === "ida"){ // geográfico: Soacha→Funza (6 nov 2026)
     setTimeout(()=>hablar(
       "Por favor, avancen hacia el pasillo para que suban más pasajeros.",
       1.0, 1.05
@@ -3314,6 +3321,7 @@ const MAX_HIST_LAT = 10;
 let cambiosDireccionPendientes = 0;
 const CONFIRMACIONES_REQUERIDAS = 3; // evita cambios por ruido puntual
 
+const LATITUD_MIN_REGLA = 4.655; // PROVISIONAL: se ajusta con la reproducción de los CSV
 function detectarDireccion(lat){
   // ── PERÍODO DE GRACIA (20 sep 2026) ──
   // MISMA regla ya aplicada a detectarDireccionPorTrazado() el 19 sep:
@@ -3331,6 +3339,11 @@ function detectarDireccion(lat){
     }
   }
 
+  // (6 nov 2026) La latitud solo distingue el sentido en el tramo norte
+  // (Funza–Calle 13). Entre Soacha, Bosa y Primera de Mayo la ruta de IDA baja
+  // de latitud antes de subir, y la regla la tomaba por VUELTA: el 4 nov
+  // causó 20 min mal (13:44) y unos 16 min mal en la mañana (04:45).
+  if(lat < LATITUD_MIN_REGLA){ historialLatitudes = []; cambiosDireccionPendientes = 0; return; }
   historialLatitudes.push(lat);
   if(historialLatitudes.length > MAX_HIST_LAT){
     historialLatitudes.shift();
@@ -3352,6 +3365,13 @@ function detectarDireccion(lat){
       if(cambiosDireccionPendientes >= CONFIRMACIONES_REQUERIDAS){
         cambiosDireccionPendientes = 0;
         if(resolverDireccion("latitud", propuesta, "diff "+diff.toFixed(5))){
+          // (6 nov 2026) Un cambio de sentido en pleno camino (retorno en Funza sin
+          // llegar a una zona operativa) cierra el tramo anterior, igual que el
+          // botón manual. Si el origen del tramo viejo queda "pegado", el origen
+          // real del tramo siguiente (ej. Ciudad Verde) no se registra y la
+          // dirección ya no se vuelve a confirmar por geocerca.
+          if(typeof origenOperativo!=="undefined") origenOperativo = null;
+          if(typeof destinoOperativo!=="undefined") destinoOperativo = null;
           const msg = direccionRuta === "ida" ? "🚌 → Funza/Mosquera" : "🚌 → Soacha";
           mostrarToast(msg, "");
           console.log("Dirección CONFIRMADA:", direccionRuta, "diff:", diff.toFixed(6));
@@ -3490,7 +3510,12 @@ function detectarDireccionPorTrazado(lat, lng){
     // Cambio de sentido: solo se acepta si estamos cerca del inicio
     // del nuevo trazado (idx bajo) — evita saltos falsos a mitad
     // de camino por una lectura de GPS ambigua.
-    if(idxDetectado <= 1){
+    // (6 nov 2026) ANTES: idxDetectado <= 1. El índice 1 de TRAZADO_IDA es
+    // "Primera de Mayo (zona)", punto a mitad de camino por donde el bus también
+    // pasa en VUELTA: el 4 nov a las 12:14 cambió la dirección a ida con el bus
+    // yendo hacia Soacha (23 min mal). Solo el índice 0 (San Humberto / Villa
+    // Paul, los orígenes reales) puede cambiar el sentido.
+    if(idxDetectado === 0){
       sentidoTrazadoActual = sentidoDetectado;
       indiceTrazadoActual = idxDetectado;
       if(resolverDireccion("trazado", sentidoDetectado, trazado[idxDetectado].nombre+" idx"+idxDetectado)){
@@ -3512,7 +3537,12 @@ function ciclarModoAudio(){
   if(btn) btn.textContent = icons[modoAudio];
 }
 
+let ultimoToqueBotonMs = 0;
 function cambiarDireccionManual(){
+  // (6 nov 2026) Un segundo toque a menos de 5 s se ignora: el 4 nov a las
+  // 12:16:41 y 12:16:44 dos toques seguidos dejaron la dirección mal 21 min.
+  if(Date.now() - ultimoToqueBotonMs < 5000){ try{ diagCambio("toque_ignorado","antirrebote 5 s"); }catch(e){} return; }
+  ultimoToqueBotonMs = Date.now();
   resolverDireccion("boton_manual", direccionRuta === "ida" ? "vuelta" : "ida", "");
   historialLatitudes = [];
   // ── CORRECCIÓN CRÍTICA: reset de pasajeros a bordo al cambiar dirección ──
@@ -3610,7 +3640,11 @@ function vozPagoRegistrado(precio){
   // geográfica pura — combina la corrección del 19 sep (capturar en
   // el momento exacto del cobro) con la traducción ida/vuelta
   // relativa a dónde inició su turno el conductor. ──
-  const direccionAlMomentoDelCobro = direccionParaVoz();
+  // (6 nov 2026) El CONTENIDO de VOZ_DESTINOS_IDA/VUELTA es geográfico
+  // ("va hasta Soacha", "va hasta Funza o Mosquera"), así que se elige con la
+  // dirección GEOGRÁFICA real. Con la traducción relativa, un turno que
+  // empieza en Funza decía el destino al revés (reportado en ruta el 4 nov).
+  const direccionAlMomentoDelCobro = direccionRuta;
 
   // Acumular conteo por precio
   _conteosPorPrecio[precio] = (_conteosPorPrecio[precio] || 0) + 1;
